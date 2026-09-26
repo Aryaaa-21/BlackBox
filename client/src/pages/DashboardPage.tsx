@@ -22,9 +22,12 @@ import { useConnectivityStore } from '../store/connectivityStore';
 import { socketService } from '../services/socket';
 import { api } from '../services/api';
 import { missionApi } from '../services/missionApi';
-import { ApiResponse, Mission, MissionStats } from '../types';
+import { taskApi } from '../services/taskApi';
+import { ApiResponse, Mission, MissionStats, Task, TaskStats } from '../types';
 import { MissionStatusBadge } from '../components/Missions/MissionStatusBadge';
 import { MissionSeverityBadge } from '../components/Missions/MissionSeverityBadge';
+import { TaskStatusBadge } from '../components/Tasks/TaskStatusBadge';
+import { TaskPriorityBadge } from '../components/Tasks/TaskPriorityBadge';
 import { Link } from 'react-router-dom';
 
 interface RealtimeLog {
@@ -55,30 +58,36 @@ export const DashboardPage: React.FC = () => {
     isError: boolean;
   }>({ loading: false, result: null, isError: false });
 
-  // Real Mission Data from MongoDB (Section 37 & 38)
+  // Real Mission & Task Data from MongoDB (Section 79)
   const [missionStats, setMissionStats] = useState<MissionStats | null>(null);
   const [recentMissions, setRecentMissions] = useState<Mission[]>([]);
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
+  const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [loadingMissions, setLoadingMissions] = useState(true);
 
   const isCommander = user?.role === 'COMMANDER';
 
-  const loadMissionData = async () => {
+  const loadOperationalData = async () => {
     try {
       setLoadingMissions(true);
-      const [stats, res] = await Promise.all([
+      const [stats, res, tStats, assigned] = await Promise.all([
         missionApi.getMissionStats().catch(() => null),
         missionApi.getMissions({ limit: 5 }).catch(() => ({ missions: [] })),
+        taskApi.getTaskStats().catch(() => null),
+        !isCommander ? taskApi.getMyTasks().catch(() => []) : Promise.resolve([]),
       ]);
       if (stats) setMissionStats(stats);
       if (res && res.missions) setRecentMissions(res.missions);
+      if (tStats) setTaskStats(tStats);
+      if (assigned) setMyTasks(assigned);
     } finally {
       setLoadingMissions(false);
     }
   };
 
   useEffect(() => {
-    loadMissionData();
-  }, []);
+    loadOperationalData();
+  }, [isCommander]);
 
   useEffect(() => {
     // Listen for socket events to display in live event terminal
@@ -115,7 +124,7 @@ export const DashboardPage: React.FC = () => {
     setIsRefreshing(true);
     await Promise.all([
       checkServerHealth(),
-      loadMissionData(),
+      loadOperationalData(),
     ]);
     socketService.ping();
     setTimeout(() => setIsRefreshing(false), 500);
@@ -128,7 +137,7 @@ export const DashboardPage: React.FC = () => {
     } else {
       setNetworkAvailable(true);
       checkServerHealth();
-      loadMissionData();
+      loadOperationalData();
       socketService.connect();
     }
   };
@@ -355,6 +364,177 @@ export const DashboardPage: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Operational Task Performance & Distribution (Section 79) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-blackbox-cyan" />
+            <h3 className="text-xs font-mono uppercase tracking-wider font-semibold text-blackbox-text">
+              {isCommander ? 'Commander Task Oversight (MongoDB Live)' : 'Operator Task Clearance (MongoDB Live)'}
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono text-zinc-500 uppercase">
+            {isCommander ? 'All Mission Scope' : 'Direct Call-Sign Allocation'}
+          </span>
+        </div>
+
+        {isCommander ? (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {/* 1. Active Missions */}
+            <div className="p-3.5 rounded-xl bg-blackbox-surface border border-cyan-900/40">
+              <div className="text-[10px] font-mono text-cyan-400 uppercase mb-1">ACTIVE MISSIONS</div>
+              <div className="text-xl font-bold font-mono text-cyan-300">
+                {loadingMissions ? '—' : missionStats?.active ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">Underway</div>
+            </div>
+
+            {/* 2. My Missions */}
+            <div className="p-3.5 rounded-xl bg-blackbox-surface border border-blackbox-border">
+              <div className="text-[10px] font-mono text-blackbox-muted uppercase mb-1">MY MISSIONS</div>
+              <div className="text-xl font-bold font-mono text-blackbox-text">
+                {loadingMissions ? '—' : missionStats?.total ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">Created</div>
+            </div>
+
+            {/* 3. Total Tasks */}
+            <div className="p-3.5 rounded-xl bg-blackbox-surface border border-blackbox-border">
+              <div className="text-[10px] font-mono text-blackbox-muted uppercase mb-1">TOTAL TASKS</div>
+              <div className="text-xl font-bold font-mono text-blackbox-text">
+                {loadingMissions ? '—' : taskStats?.total ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">Defined</div>
+            </div>
+
+            {/* 4. Active Tasks */}
+            <div className="p-3.5 rounded-xl bg-cyan-950/20 border border-cyan-800/60">
+              <div className="text-[10px] font-mono text-cyan-400 uppercase mb-1 flex items-center justify-between">
+                <span>ACTIVE TASKS</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              </div>
+              <div className="text-xl font-bold font-mono text-cyan-300">
+                {loadingMissions ? '—' : taskStats?.active ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-cyan-500 mt-0.5">In Progress</div>
+            </div>
+
+            {/* 5. Blocked Tasks */}
+            <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-800/60">
+              <div className="text-[10px] font-mono text-amber-400 uppercase mb-1">BLOCKED TASKS</div>
+              <div className="text-xl font-bold font-mono text-amber-300">
+                {loadingMissions ? '—' : taskStats?.blocked ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-amber-500 mt-0.5">Intervention Req.</div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {/* 1. Assigned Missions */}
+            <div className="p-3.5 rounded-xl bg-blackbox-surface border border-blackbox-border">
+              <div className="text-[10px] font-mono text-blackbox-muted uppercase mb-1">ASSIGNED MISSIONS</div>
+              <div className="text-xl font-bold font-mono text-blackbox-text">
+                {loadingMissions ? '—' : missionStats?.total ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">Active deployments</div>
+            </div>
+
+            {/* 2. My Tasks */}
+            <div className="p-3.5 rounded-xl bg-blackbox-surface border border-blackbox-border">
+              <div className="text-[10px] font-mono text-blackbox-muted uppercase mb-1">MY TASKS</div>
+              <div className="text-xl font-bold font-mono text-blackbox-text">
+                {loadingMissions ? '—' : taskStats?.total ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">Delegated to me</div>
+            </div>
+
+            {/* 3. Active Tasks */}
+            <div className="p-3.5 rounded-xl bg-cyan-950/20 border border-cyan-800/60">
+              <div className="text-[10px] font-mono text-cyan-400 uppercase mb-1 flex items-center justify-between">
+                <span>ACTIVE TASKS</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              </div>
+              <div className="text-xl font-bold font-mono text-cyan-300">
+                {loadingMissions ? '—' : taskStats?.active ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-cyan-500 mt-0.5">Currently running</div>
+            </div>
+
+            {/* 4. Blocked Tasks */}
+            <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-800/60">
+              <div className="text-[10px] font-mono text-amber-400 uppercase mb-1">BLOCKED TASKS</div>
+              <div className="text-xl font-bold font-mono text-amber-300">
+                {loadingMissions ? '—' : taskStats?.blocked ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-amber-500 mt-0.5">Impeded</div>
+            </div>
+
+            {/* 5. Completed Tasks */}
+            <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-800/60">
+              <div className="text-[10px] font-mono text-emerald-400 uppercase mb-1">COMPLETED TASKS</div>
+              <div className="text-xl font-bold font-mono text-emerald-400">
+                {loadingMissions ? '—' : taskStats?.completed ?? 0}
+              </div>
+              <div className="text-[10px] font-mono text-emerald-500 mt-0.5">Fulfilled</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Field Operator: My Assigned Tasks Roster (Section 54) */}
+      {!isCommander && myTasks.length > 0 && (
+        <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border space-y-3">
+          <div className="flex items-center justify-between pb-3 border-b border-blackbox-border">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-xs font-mono uppercase tracking-wider font-semibold text-blackbox-text">
+                Assigned Operational Directives ({myTasks.length})
+              </h3>
+            </div>
+          </div>
+
+          <div className="divide-y divide-blackbox-border/60">
+            {myTasks.slice(0, 5).map((task) => {
+              const missionId =
+                typeof task.missionId === 'object' && task.missionId !== null
+                  ? task.missionId.id
+                  : task.missionId;
+              const missionTitle =
+                typeof task.missionId === 'object' && task.missionId !== null
+                  ? task.missionId.title
+                  : 'Mission';
+
+              return (
+                <div
+                  key={task.id}
+                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-blackbox-panel/30 px-2 rounded-lg transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <TaskPriorityBadge priority={task.priority} size="sm" />
+                      <TaskStatusBadge status={task.status} size="sm" />
+                      <span className="text-[10px] font-mono text-zinc-500 truncate">
+                        // {missionTitle}
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono font-bold text-blackbox-text truncate">
+                      {task.title}
+                    </div>
+                  </div>
+
+                  <Link
+                    to={`/missions/${missionId}`}
+                    className="self-start sm:self-auto px-3 py-1.5 rounded bg-blackbox-panel hover:bg-zinc-800 border border-blackbox-border text-xs font-mono text-blackbox-cyan transition-colors"
+                  >
+                    OPEN MISSION &rarr;
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent Real Missions Section (Section 38) */}
       <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border space-y-4">

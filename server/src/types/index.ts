@@ -38,6 +38,14 @@ export interface PaginationMeta {
   totalPages: number;
 }
 
+export type MemberRole = 'COMMANDER' | 'FIELD_OPERATOR';
+
+export type MemberStatus = 'INVITED' | 'ACTIVE' | 'REMOVED';
+
+export type TaskStatus = 'PENDING' | 'ACTIVE' | 'BLOCKED' | 'COMPLETED';
+
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
 export interface MissionStats {
   total: number;
   active: number;
@@ -45,3 +53,12 @@ export interface MissionStats {
   completed: number;
   cancelled: number;
 }
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  active: number;
+  blocked: number;
+  completed: number;
+}
+

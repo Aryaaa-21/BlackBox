@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { missionController } from '../controllers/mission.controller';
+import { missionMemberController } from '../controllers/missionMember.controller';
+import { taskController } from '../controllers/task.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/role.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
 import {
   createMissionSchema,
   updateMissionSchema,
-  missionQuerySchema,
 } from '../validators/mission.validator';
+import { addMemberSchema } from '../validators/missionMember.validator';
+import { createTaskSchema } from '../validators/task.validator';
 
 const router = Router();
 
@@ -60,4 +63,46 @@ router.post(
   (req, res, next) => missionController.cancel(req, res, next)
 );
 
+// ==========================================
+// TEAM MEMBERSHIP ROUTES (Section 19)
+// ==========================================
+
+// Add Member to Mission Team (COMMANDER only)
+router.post(
+  '/:missionId/members',
+  requireRole('COMMANDER'),
+  validateRequest(addMemberSchema),
+  (req, res, next) => missionMemberController.addMember(req, res, next)
+);
+
+// List Mission Team Members (Commander & Active Members)
+router.get('/:missionId/members', (req, res, next) =>
+  missionMemberController.listMembers(req, res, next)
+);
+
+// Remove Member from Mission Team (COMMANDER only)
+router.delete(
+  '/:missionId/members/:userId',
+  requireRole('COMMANDER'),
+  (req, res, next) => missionMemberController.removeMember(req, res, next)
+);
+
+// ==========================================
+// MISSION TASK ROUTES (Section 38)
+// ==========================================
+
+// Create Task within Mission (COMMANDER only)
+router.post(
+  '/:missionId/tasks',
+  requireRole('COMMANDER'),
+  validateRequest(createTaskSchema),
+  (req, res, next) => taskController.createTask(req, res, next)
+);
+
+// List Tasks within Mission (Commander & Active Members)
+router.get('/:missionId/tasks', (req, res, next) =>
+  taskController.getMissionTasks(req, res, next)
+);
+
 export default router;
+

@@ -575,6 +575,373 @@ async function runTests() {
     assert(roomJoinCommanderB, 'Unauthorized Commander B is rejected from joining mission room (403)');
     commanderBSocket.disconnect();
 
+    // =========================================================================
+    // PHASE 4: TEAM MANAGEMENT & TASK OPERATIONS TESTS (Sections 94 - 101)
+    // =========================================================================
+
+    // Register Operator B for isolation and cross-operator testing
+    const operatorBEmail = `test.operator.b.${Date.now()}@blackbox.local`;
+    const regOperatorBRes = await request.post('/api/v1/auth/register').send({
+      name: 'Operator Maya Lin',
+      email: operatorBEmail,
+      password: 'TacticalPassword123!',
+      role: 'FIELD_OPERATOR',
+    });
+    const operatorBToken = regOperatorBRes.body.data.token;
+    const operatorBId = regOperatorBRes.body.data.user.id;
+    const operatorAId = regOperatorRes.body.data.user.id;
+    const commanderAId = regCommanderRes.body.data.user.id;
+
+    // Create operational mission for Phase 4 Team & Task operations (Section 102 Step 2)
+    const drillMissionRes = await request
+      .post('/api/v1/missions')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        title: 'Campus Building B Emergency Drill',
+        description: 'Comprehensive tactical drill in Sector B',
+        location: 'Building B East Wing',
+        severity: 'HIGH',
+      });
+    const drillMissionId = drillMissionRes.body.data.mission.id;
+    await request.post(`/api/v1/missions/${drillMissionId}/start`).set('Authorization', `Bearer ${commanderToken}`);
+
+    // 33. Automatic Commander Membership on Mission Creation (Section 7)
+    const membersInitRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(membersInitRes.status === 200, 'GET /missions/:missionId/members returns 200 OK');
+    assert(membersInitRes.body.data.members.length >= 1, 'Mission has initial members');
+    const autoCommander = membersInitRes.body.data.members.find(
+      (m: { role: string; userId: { id: string } }) => m.role === 'COMMANDER' && m.userId.id === commanderAId
+    );
+    assert(Boolean(autoCommander), 'Mission creator is automatically registered as active COMMANDER member');
+    assert(autoCommander.status === 'ACTIVE', 'Commander membership is ACTIVE');
+
+    // Reject adding members to COMPLETED mission (Section 68)
+    const completedAddMember = await request
+      .post(`/api/v1/missions/${missionAId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+    assert(completedAddMember.status === 400, 'Cannot add member to COMPLETED mission (400)');
+    assert(completedAddMember.body.code === 'MISSION_NOT_OPERATIONAL', 'Returns MISSION_NOT_OPERATIONAL code');
+
+    // 34. Field Operator Directory Search (Section 20 & 21)
+    const userSearchRes = await request
+      .get('/api/v1/users?role=FIELD_OPERATOR')
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(userSearchRes.status === 200, 'GET /api/v1/users?role=FIELD_OPERATOR returns 200 OK');
+    assert(Array.isArray(userSearchRes.body.data.users), 'Users directory returns array');
+    const hasSafeFieldsOnly = userSearchRes.body.data.users.every(
+      (u: { id?: string; name?: string; email?: string; role?: string; passwordHash?: unknown }) =>
+        Boolean(u.id && u.name && u.email && u.role && u.passwordHash === undefined)
+    );
+    assert(hasSafeFieldsOnly, 'User search exposes safe fields only and never leaks passwordHash');
+
+    // 35. Add Member API (Section 9 & 10)
+    const addMemberRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+    assert(addMemberRes.status === 201, 'Commander adds Field Operator A to mission (201 Created)');
+    assert(addMemberRes.body.data.member.role === 'FIELD_OPERATOR', 'Server enforces role = FIELD_OPERATOR');
+    assert(addMemberRes.body.data.member.status === 'ACTIVE', 'Membership status is ACTIVE');
+
+    // 36. Compound Unique Membership Constraint: Reject Duplicate Member (Section 6 & 10)
+    const dupMemberRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+    assert(dupMemberRes.status === 409, 'Adding duplicate member returns 409 Conflict');
+    assert(dupMemberRes.body.code === 'MEMBER_ALREADY_EXISTS', 'Returns MEMBER_ALREADY_EXISTS code');
+
+    // 37. Reject Commander Adding Themselves (Section 10)
+    const selfAddRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: commanderAId });
+    assert(selfAddRes.status === 400, 'Commander adding themselves returns 400 Bad Request');
+    assert(selfAddRes.body.code === 'INVALID_MEMBER', 'Returns INVALID_MEMBER code');
+
+    // 38. Non-Commander Cannot Add Members (Section 10 & 14)
+    const opAddMemberRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ userId: operatorBId });
+    assert(opAddMemberRes.status === 403, 'Field Operator cannot add members (403 Forbidden)');
+
+    // 39. Field Operator Can Access Mission Once Active Member (Section 15)
+    const opAccessMissionRes = await request
+      .get(`/api/v1/missions/${drillMissionId}`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(opAccessMissionRes.status === 200, 'Active Field Operator member can access mission (200 OK)');
+
+    // 40. Primary Commander Cannot Be Removed (Section 11)
+    const removeCommanderRes = await request
+      .delete(`/api/v1/missions/${drillMissionId}/members/${commanderAId}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(removeCommanderRes.status === 400, 'Cannot remove primary mission commander (400)');
+    assert(removeCommanderRes.body.code === 'CANNOT_REMOVE_COMMANDER', 'Returns CANNOT_REMOVE_COMMANDER code');
+
+    // 41. Remove Member Soft-Deletion (Section 11)
+    const removeOpRes = await request
+      .delete(`/api/v1/missions/${drillMissionId}/members/${operatorAId}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(removeOpRes.status === 200, 'Commander removes Field Operator A (200 OK)');
+    assert(removeOpRes.body.data.member.status === 'REMOVED', 'Member status updated to REMOVED');
+
+    // Default member list returns ACTIVE only
+    const activeMembersOnly = await request
+      .get(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(
+      !activeMembersOnly.body.data.members.some((m: { userId: { id: string } }) => m.userId.id === operatorAId),
+      'Removed member is excluded from default ACTIVE members list'
+    );
+
+    // 42. Removed Member Security: Loses Mission Access (Section 69 & 101)
+    const removedMemberAccess = await request
+      .get(`/api/v1/missions/${drillMissionId}`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(removedMemberAccess.status === 403, 'Removed member loses mission access (403 Forbidden)');
+    assert(removedMemberAccess.body.code === 'MISSION_ACCESS_DENIED', 'Returns MISSION_ACCESS_DENIED code');
+
+    // 43. Reactivate Removed Member without Duplicate Document (Section 12 & 102)
+    const reactivateRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+    assert(
+      reactivateRes.status === 200 || reactivateRes.status === 201,
+      'Adding removed member reactivates existing membership'
+    );
+    assert(reactivateRes.body.data.member.status === 'ACTIVE', 'Reactivated status is ACTIVE');
+
+    // 44. Task Creation in Operational Mission (Section 24, 25, 95)
+    // Commander creates Task 1
+    const task1Res = await request
+      .post(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        title: 'Check Zone C',
+        description: 'Inspect the assigned area for security breaches',
+        priority: 'HIGH',
+      });
+    assert(task1Res.status === 201, 'Commander creates task in active mission (201 Created)');
+    assert(task1Res.body.data.task.title === 'Check Zone C', 'Task title recorded');
+    assert(task1Res.body.data.task.priority === 'HIGH', 'Task priority recorded');
+    assert(task1Res.body.data.task.status === 'PENDING', 'Task initial status is PENDING');
+    assert(task1Res.body.data.task.createdBy === commanderAId || task1Res.body.data.task.createdBy?.id === commanderAId, 'Server derived createdBy as Commander');
+    const task1Id = task1Res.body.data.task.id;
+
+    // 45. Task Creation Security & Validation (Section 25 & 95)
+    // Field Operator cannot create task
+    const opCreateTaskRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ title: 'Unauthorized Task' });
+    assert(opCreateTaskRes.status === 403, 'Field Operator cannot create tasks (403 Forbidden)');
+
+    // Cannot create task in completed mission
+    const completedTaskRes = await request
+      .post(`/api/v1/missions/${missionAId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ title: 'Task in completed mission' });
+    assert(completedTaskRes.status === 400, 'Cannot create task in COMPLETED mission (400)');
+    assert(completedTaskRes.body.code === 'MISSION_NOT_OPERATIONAL', 'Returns MISSION_NOT_OPERATIONAL code');
+
+    // Invalid priority rejected
+    const badPriorityRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ title: 'Bad Priority Task', priority: 'SUPER_CRITICAL' });
+    assert(badPriorityRes.status === 400, 'Invalid priority is rejected with 400 Bad Request');
+
+    // 46. Task Assignment Rules (Section 26, 27, 70, 96)
+    // Attempt assigning to non-member (Operator B is not in drill mission)
+    const assignNonMemberRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/assign`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorBId });
+    assert(assignNonMemberRes.status === 400, 'Assigning task to non-member is rejected (400)');
+    assert(assignNonMemberRes.body.code === 'TASK_INVALID_ASSIGNEE', 'Returns TASK_INVALID_ASSIGNEE code');
+
+    // Attempt assigning to Commander
+    const assignCommanderRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/assign`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: commanderAId });
+    assert(assignCommanderRes.status === 400, 'Assigning task to Commander is rejected (400)');
+    assert(assignCommanderRes.body.code === 'TASK_INVALID_ASSIGNEE', 'Returns TASK_INVALID_ASSIGNEE code');
+
+    // Valid assignment to active member Field Operator A
+    const assignOpARes = await request
+      .patch(`/api/v1/tasks/${task1Id}/assign`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+    assert(assignOpARes.status === 200, 'Commander assigns task to active Field Operator A (200 OK)');
+    assert(assignOpARes.body.data.task.assignedTo.id === operatorAId, 'Task assignedTo is Operator A');
+
+    // Field Operator cannot assign tasks
+    const opAssignRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/assign`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ userId: operatorAId });
+    assert(opAssignRes.status === 403, 'Field Operator cannot assign tasks (403 Forbidden)');
+
+    // 47. Unassign Task (Section 28 & 96)
+    const unassignRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/unassign`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(unassignRes.status === 200, 'Commander unassigns task (200 OK)');
+    assert(unassignRes.body.data.task.assignedTo === null, 'Task assignedTo is now null');
+
+    // Reassign back to Operator A for state-machine testing
+    await request
+      .patch(`/api/v1/tasks/${task1Id}/assign`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+
+    // 48. Strict Task State Machine Transitions & Authorization (Section 23, 31, 32, 33, 97, 98)
+    // Disallowed transition: PENDING -> COMPLETED (Must fail)
+    const pendingToComplete = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'COMPLETED' });
+    assert(pendingToComplete.status === 400, 'State machine rejects PENDING -> COMPLETED (400)');
+    assert(pendingToComplete.body.code === 'TASK_INVALID_STATUS_TRANSITION', 'Returns TASK_INVALID_STATUS_TRANSITION code');
+
+    // Other Operator (B) attempts to update Operator A's assigned task -> 403 TASK_ACCESS_DENIED
+    // First deploy Operator B to mission so they have mission access
+    await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorBId });
+    const crossOpStatusRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorBToken}`)
+      .send({ status: 'ACTIVE' });
+    assert(crossOpStatusRes.status === 403, 'Operator B cannot update Operator A task status (403)');
+    assert(crossOpStatusRes.body.code === 'TASK_ACCESS_DENIED', 'Returns TASK_ACCESS_DENIED code');
+
+    // Allowed transition 1: PENDING -> ACTIVE (Field Operator A starts task)
+    const startTaskRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'ACTIVE' });
+    assert(startTaskRes.status === 200, 'Assigned Operator starts task: PENDING -> ACTIVE (200 OK)');
+    assert(startTaskRes.body.data.task.status === 'ACTIVE', 'Task status is ACTIVE');
+    assert(Boolean(startTaskRes.body.data.task.startedAt), 'Server assigned startedAt timestamp');
+
+    // Allowed transition 2: ACTIVE -> BLOCKED
+    const blockTaskRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'BLOCKED' });
+    assert(blockTaskRes.status === 200, 'Assigned Operator blocks task: ACTIVE -> BLOCKED (200 OK)');
+    assert(blockTaskRes.body.data.task.status === 'BLOCKED', 'Task status is BLOCKED');
+    assert(Boolean(blockTaskRes.body.data.task.blockedAt), 'Server assigned blockedAt timestamp');
+
+    // Disallowed transition: BLOCKED -> COMPLETED (Must fail)
+    const blockedToComplete = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'COMPLETED' });
+    assert(blockedToComplete.status === 400, 'State machine rejects BLOCKED -> COMPLETED (400)');
+
+    // Allowed transition 3: BLOCKED -> ACTIVE (Resume task)
+    const resumeTaskRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'ACTIVE' });
+    assert(resumeTaskRes.status === 200, 'Assigned Operator resumes task: BLOCKED -> ACTIVE (200 OK)');
+    assert(resumeTaskRes.body.data.task.status === 'ACTIVE', 'Task status is ACTIVE');
+
+    // Allowed transition 4: ACTIVE -> COMPLETED (Complete task)
+    const completeTaskRes = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'COMPLETED' });
+    assert(completeTaskRes.status === 200, 'Assigned Operator completes task: ACTIVE -> COMPLETED (200 OK)');
+    assert(completeTaskRes.body.data.task.status === 'COMPLETED', 'Task status is COMPLETED');
+    assert(Boolean(completeTaskRes.body.data.task.completedAt), 'Server assigned completedAt timestamp');
+
+    // Disallowed transition: COMPLETED -> ACTIVE (Terminal state)
+    const completedToActiveTask = await request
+      .patch(`/api/v1/tasks/${task1Id}/status`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ status: 'ACTIVE' });
+    assert(completedToActiveTask.status === 400, 'State machine rejects COMPLETED -> ACTIVE (400)');
+
+    // 49. Task List & Calculated Stats Verification (Section 29, 79, 81, 82)
+    const missionTasksRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(missionTasksRes.status === 200, 'GET /missions/:missionId/tasks returns 200 OK');
+    assert(missionTasksRes.body.data.tasks.length === 1, 'Returns 1 task');
+    assert(missionTasksRes.body.data.stats.total === 1, 'Stats total is 1');
+    assert(missionTasksRes.body.data.stats.completed === 1, 'Stats completed is 1');
+
+    const globalTaskStatsRes = await request
+      .get('/api/v1/tasks/stats')
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(globalTaskStatsRes.status === 200, 'GET /api/v1/tasks/stats returns 200 OK');
+    assert(globalTaskStatsRes.body.data.stats.completed >= 1, 'Global task stats counts completed task');
+
+    const myTasksRes = await request
+      .get('/api/v1/tasks/my')
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(myTasksRes.status === 200, 'GET /api/v1/tasks/my returns 200 OK');
+    assert(
+      myTasksRes.body.data.tasks.some((t: { id: string }) => t.id === task1Id),
+      'Operator A retrieves assigned task in My Tasks'
+    );
+
+    // 50. Real-time Team and Task Events in Mission Room (Section 60, 61, 63, 64)
+    const operatorSocket: ClientSocketType = ClientSocket(`http://localhost:${testPort}`, {
+      transports: ['websocket'],
+      auth: { token: operatorToken },
+      autoConnect: false,
+    });
+
+    let taskCreatedEventReceived = false;
+    let memberAddedEventReceived = false;
+
+    await new Promise<void>((resolve) => {
+      operatorSocket.on('connect', () => {
+        operatorSocket.emit('mission:join', drillMissionId, () => {
+          operatorSocket.on('task:created', (payload: { task: { title: string } }) => {
+            if (payload?.task?.title === 'Secondary Checkpoint Scan') {
+              taskCreatedEventReceived = true;
+            }
+          });
+
+          operatorSocket.on('mission:member_added', (payload: { member: { role: string } }) => {
+            if (payload?.member) {
+              memberAddedEventReceived = true;
+            }
+          });
+
+          resolve();
+        });
+      });
+      operatorSocket.connect();
+    });
+
+    // Commander triggers task creation -> triggers task:created broadcast
+    await request
+      .post(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        title: 'Secondary Checkpoint Scan',
+        priority: 'MEDIUM',
+      });
+
+    // Wait brief window for socket event
+    await new Promise((r) => setTimeout(r, 600));
+    assert(taskCreatedEventReceived, 'Operator socket received real-time task:created event in mission room');
+
+    operatorSocket.disconnect();
+
     // Clean up
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     await disconnectDatabase();

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Mission, IMissionDocument } from '../models/Mission';
+import { MissionMember } from '../models/MissionMember';
 import { AppError } from '../middleware/error.middleware';
 import { UserPayload, MissionStats, PaginationMeta } from '../types';
 import { CreateMissionInput, UpdateMissionInput, MissionQueryInput } from '../validators/mission.validator';
@@ -30,7 +31,7 @@ export class MissionService {
   }
 
   /**
-   * Create Mission (Commander only)
+   * Create Mission (Commander only) - Auto-registers commander in MissionMember
    */
   async createMission(userId: string, input: CreateMissionInput): Promise<IMissionDocument> {
     const mission = new Mission({
@@ -45,6 +46,16 @@ export class MissionService {
     await mission.save();
     await mission.populate('createdBy', 'id name email role');
 
+    // Section 7: Auto-register primary commander in MissionMember
+    const commanderMembership = new MissionMember({
+      missionId: mission._id,
+      userId: new mongoose.Types.ObjectId(userId),
+      role: 'COMMANDER',
+      status: 'ACTIVE',
+      joinedAt: new Date(),
+    });
+    await commanderMembership.save();
+
     // Real-time broadcast
     this.emitSocketEvent(`user:${userId}`, 'mission:created', mission);
 
@@ -52,7 +63,7 @@ export class MissionService {
   }
 
   /**
-   * Get accessible missions for authenticated user
+   * Get accessible missions for authenticated user (Section 15)
    */
   async getUserMissions(
     user: UserPayload,
@@ -69,8 +80,13 @@ export class MissionService {
       // Commander sees missions they created
       filter.createdBy = new mongoose.Types.ObjectId(user.id);
     } else {
-      // Field Operator sees operational/accessible missions in deployment
-      // (Future Phase 4 will refine team member assignment lookup)
+      // Field Operator sees missions where they have ACTIVE membership (Section 15)
+      const memberships = await MissionMember.find({
+        userId: new mongoose.Types.ObjectId(user.id),
+        status: 'ACTIVE',
+      }).select('missionId');
+      const missionIds = memberships.map((m) => m.missionId);
+      filter._id = { $in: missionIds };
     }
 
     if (query.status) {
@@ -112,7 +128,7 @@ export class MissionService {
   }
 
   /**
-   * Retrieve single mission by ID with access verification
+   * Retrieve single mission by ID with access verification (Section 15)
    */
   async getMissionById(missionId: string, user: UserPayload): Promise<IMissionDocument> {
     this.validateObjectId(missionId);
@@ -123,21 +139,33 @@ export class MissionService {
       throw new AppError('Mission not found', 404, 'MISSION_NOT_FOUND');
     }
 
-    // Access control: If commander, must own the mission
-    const creatorId =
-      typeof mission.createdBy === 'object' && '_id' in mission.createdBy
-        ? (mission.createdBy as { _id: mongoose.Types.ObjectId })._id.toString()
-        : mission.createdBy.toString();
+    // Access control:
+    if (user.role === 'COMMANDER') {
+      const creatorId =
+        typeof mission.createdBy === 'object' && '_id' in mission.createdBy
+          ? (mission.createdBy as { _id: mongoose.Types.ObjectId })._id.toString()
+          : mission.createdBy.toString();
 
-    if (user.role === 'COMMANDER' && creatorId !== user.id) {
-      throw new AppError('Access denied. You do not have clearance for this mission.', 403, 'MISSION_ACCESS_DENIED');
+      if (creatorId !== user.id) {
+        throw new AppError('Access denied. You do not have clearance for this mission.', 403, 'MISSION_ACCESS_DENIED');
+      }
+    } else {
+      // Field Operator: must have ACTIVE membership in this mission (Section 15)
+      const isMember = await MissionMember.exists({
+        missionId: mission._id,
+        userId: new mongoose.Types.ObjectId(user.id),
+        status: 'ACTIVE',
+      });
+      if (!isMember) {
+        throw new AppError('Access denied. You are not assigned to this mission.', 403, 'MISSION_ACCESS_DENIED');
+      }
     }
 
     return mission;
   }
 
   /**
-   * Check if user is authorized to join the mission room
+   * Check if user is authorized to join the mission room (Section 15 & 40)
    */
   async canUserAccessMission(missionId: string, user: UserPayload): Promise<boolean> {
     if (!mongoose.Types.ObjectId.isValid(missionId)) {
@@ -153,8 +181,13 @@ export class MissionService {
       return mission.createdBy.toString() === user.id;
     }
 
-    // Field operators are permitted to observe active unit missions
-    return true;
+    // Field operators must be active members (Section 15 & 69)
+    const isMember = await MissionMember.exists({
+      missionId: mission._id,
+      userId: new mongoose.Types.ObjectId(user.id),
+      status: 'ACTIVE',
+    });
+    return Boolean(isMember);
   }
 
   /**
@@ -333,6 +366,13 @@ export class MissionService {
     const filter: Record<string, unknown> = {};
     if (user.role === 'COMMANDER') {
       filter.createdBy = new mongoose.Types.ObjectId(user.id);
+    } else {
+      const memberships = await MissionMember.find({
+        userId: new mongoose.Types.ObjectId(user.id),
+        status: 'ACTIVE',
+      }).select('missionId');
+      const missionIds = memberships.map((m) => m.missionId);
+      filter._id = { $in: missionIds };
     }
 
     const [total, active, draft, completed, cancelled] = await Promise.all([

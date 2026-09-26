@@ -78,6 +78,75 @@ export interface UpdateMissionPayload {
   severity?: MissionSeverity;
 }
 
+export type MemberRole = 'COMMANDER' | 'FIELD_OPERATOR';
+
+export type MemberStatus = 'INVITED' | 'ACTIVE' | 'REMOVED';
+
+export interface MissionMember {
+  id: string;
+  missionId: string;
+  userId: {
+    id: string;
+    name: string;
+    email: string;
+    role?: UserRole;
+  };
+  role: MemberRole;
+  status: MemberStatus;
+  joinedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TaskStatus = 'PENDING' | 'ACTIVE' | 'BLOCKED' | 'COMPLETED';
+
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface Task {
+  id: string;
+  missionId: string | { id: string; title: string; location?: string; status?: MissionStatus; severity?: MissionSeverity };
+  title: string;
+  description: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  assignedTo?: { id: string; name: string; email: string; role?: UserRole } | null;
+  createdBy: { id: string; name: string; email?: string } | string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  blockedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  active: number;
+  blocked: number;
+  completed: number;
+}
+
+export interface TaskFilters {
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assignedTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateTaskPayload {
+  title: string;
+  description?: string;
+  priority?: TaskPriority;
+  assignedTo?: string;
+}
+
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  priority?: TaskPriority;
+}
+
 export type ConnectivityStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
 
 export type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated' | 'server_unavailable';

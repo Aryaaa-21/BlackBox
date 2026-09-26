@@ -9,10 +9,6 @@ import {
   XCircle,
   Edit3,
   Calendar,
-  Layers,
-  Users,
-  CheckSquare,
-  Activity,
   AlertCircle,
   Lock,
   User,
@@ -20,23 +16,27 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMissionStore } from '../store/missionStore';
+import { useTeamStore } from '../store/teamStore';
+import { useTaskStore } from '../store/taskStore';
 import { MissionStatusBadge } from '../components/Missions/MissionStatusBadge';
 import { MissionSeverityBadge } from '../components/Missions/MissionSeverityBadge';
 import { ConfirmDialog } from '../components/Common/ConfirmDialog';
 import { LoadingState } from '../components/Common/LoadingState';
 import { ErrorState } from '../components/Common/ErrorState';
+import { MissionTeamPanel } from '../components/Team/MissionTeamPanel';
+import { TaskList } from '../components/Tasks/TaskList';
 import { socketService } from '../services/socket';
-import { Mission, MissionSeverity } from '../types';
+import { Mission, MissionSeverity, MissionMember, Task } from '../types';
 
 export const MissionDetailPage: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
   const { user } = useAuthStore();
   const {
     selectedMission,
-    isLoading,
+    isLoading: isMissionLoading,
     isActionLoading,
     isUpdating,
-    error,
+    error: missionError,
     fetchMission,
     startMission,
     completeMission,
@@ -47,6 +47,35 @@ export const MissionDetailPage: React.FC = () => {
     handleRealtimeMissionUpdate,
     clearSelectedMission,
   } = useMissionStore();
+
+  const {
+    members,
+    isLoading: isTeamLoading,
+    fetchMembers,
+    addMember,
+    removeMember,
+    handleMemberAdded,
+    handleMemberRemoved,
+    handleMemberReactivated,
+    clearMembers,
+  } = useTeamStore();
+
+  const {
+    tasks,
+    stats: taskStats,
+    isLoading: isTasksLoading,
+    fetchTasks,
+    createTask,
+    assignTask,
+    unassignTask,
+    updateTaskStatus,
+    handleTaskCreated,
+    handleTaskUpdated,
+    handleTaskAssigned,
+    handleTaskUnassigned,
+    handleTaskStatusChanged,
+    clearTasks,
+  } = useTaskStore();
 
   // Confirmation Modal states
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -80,40 +109,79 @@ export const MissionDetailPage: React.FC = () => {
   });
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Load mission and join Socket room
+  // Load mission, members, tasks, and join Socket room (Section 62 & 108)
   useEffect(() => {
     if (!missionId) return;
 
     fetchMission(missionId).catch(() => {});
+    fetchMembers(missionId).catch(() => {});
+    fetchTasks(missionId).catch(() => {});
     joinMissionRoom(missionId);
 
-    // Listen for room broadcasts
+    // Mission lifecycle room broadcasts
     const unsubUpdated = socketService.subscribe('mission:updated', (data) => {
       const m = data as Mission;
-      if (m.id === missionId) {
-        handleRealtimeMissionUpdate(m);
-      }
+      if (m.id === missionId) handleRealtimeMissionUpdate(m);
     });
 
     const unsubStarted = socketService.subscribe('mission:started', (data) => {
       const m = data as Mission;
-      if (m.id === missionId) {
-        handleRealtimeMissionUpdate(m);
-      }
+      if (m.id === missionId) handleRealtimeMissionUpdate(m);
     });
 
     const unsubCompleted = socketService.subscribe('mission:completed', (data) => {
       const m = data as Mission;
-      if (m.id === missionId) {
-        handleRealtimeMissionUpdate(m);
-      }
+      if (m.id === missionId) handleRealtimeMissionUpdate(m);
     });
 
     const unsubCancelled = socketService.subscribe('mission:cancelled', (data) => {
       const m = data as Mission;
-      if (m.id === missionId) {
-        handleRealtimeMissionUpdate(m);
+      if (m.id === missionId) handleRealtimeMissionUpdate(m);
+    });
+
+    // Team Real-time Events (Section 60 & 63)
+    const unsubMemberAdded = socketService.subscribe('mission:member_added', (data) => {
+      const payload = data as { missionId: string; member: MissionMember };
+      if (payload.missionId === missionId) handleMemberAdded(payload.member);
+    });
+
+    const unsubMemberRemoved = socketService.subscribe('mission:member_removed', (data) => {
+      const payload = data as { missionId: string; userId: string };
+      if (payload.missionId === missionId) handleMemberRemoved(payload.userId);
+    });
+
+    const unsubMemberReactivated = socketService.subscribe(
+      'mission:member_reactivated',
+      (data) => {
+        const payload = data as { missionId: string; member: MissionMember };
+        if (payload.missionId === missionId) handleMemberReactivated(payload.member);
       }
+    );
+
+    // Task Real-time Events (Section 61 & 64)
+    const unsubTaskCreated = socketService.subscribe('task:created', (data) => {
+      const payload = data as { missionId: string; task: Task };
+      if (payload.missionId === missionId) handleTaskCreated(payload.task);
+    });
+
+    const unsubTaskUpdated = socketService.subscribe('task:updated', (data) => {
+      const payload = data as { missionId: string; task: Task };
+      if (payload.missionId === missionId) handleTaskUpdated(payload.task);
+    });
+
+    const unsubTaskAssigned = socketService.subscribe('task:assigned', (data) => {
+      const payload = data as { missionId: string; task: Task };
+      if (payload.missionId === missionId) handleTaskAssigned(payload.task);
+    });
+
+    const unsubTaskUnassigned = socketService.subscribe('task:unassigned', (data) => {
+      const payload = data as { missionId: string; task: Task };
+      if (payload.missionId === missionId) handleTaskUnassigned(payload.task);
+    });
+
+    const unsubTaskStatusChanged = socketService.subscribe('task:status_changed', (data) => {
+      const payload = data as { missionId: string; task: Task };
+      if (payload.missionId === missionId) handleTaskStatusChanged(payload.task);
     });
 
     return () => {
@@ -122,15 +190,37 @@ export const MissionDetailPage: React.FC = () => {
       unsubStarted();
       unsubCompleted();
       unsubCancelled();
+      unsubMemberAdded();
+      unsubMemberRemoved();
+      unsubMemberReactivated();
+      unsubTaskCreated();
+      unsubTaskUpdated();
+      unsubTaskAssigned();
+      unsubTaskUnassigned();
+      unsubTaskStatusChanged();
       clearSelectedMission();
+      clearMembers();
+      clearTasks();
     };
   }, [
     missionId,
     fetchMission,
+    fetchMembers,
+    fetchTasks,
     joinMissionRoom,
     leaveMissionRoom,
     handleRealtimeMissionUpdate,
+    handleMemberAdded,
+    handleMemberRemoved,
+    handleMemberReactivated,
+    handleTaskCreated,
+    handleTaskUpdated,
+    handleTaskAssigned,
+    handleTaskUnassigned,
+    handleTaskStatusChanged,
     clearSelectedMission,
+    clearMembers,
+    clearTasks,
   ]);
 
   // Set edit form values when selectedMission loads or modal opens
@@ -145,7 +235,7 @@ export const MissionDetailPage: React.FC = () => {
     }
   }, [selectedMission]);
 
-  if (isLoading && !selectedMission) {
+  if (isMissionLoading && !selectedMission) {
     return (
       <LoadingState
         message="Loading operational mission parameters..."
@@ -154,12 +244,12 @@ export const MissionDetailPage: React.FC = () => {
     );
   }
 
-  if (error || !selectedMission) {
+  if (missionError || !selectedMission) {
     return (
       <div className="py-8 space-y-4 max-w-xl mx-auto text-center">
         <ErrorState
-          title={error?.includes('denied') ? 'Access Denied' : 'Mission Unavailable'}
-          message={error || 'The requested mission record could not be loaded.'}
+          title={missionError?.includes('denied') ? 'Access Denied' : 'Mission Unavailable'}
+          message={missionError || 'The requested mission record could not be loaded.'}
           onRetry={() => {
             if (missionId) fetchMission(missionId).catch(() => {});
           }}
@@ -457,78 +547,50 @@ export const MissionDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Operational Area (Reserved for Phase 4 & Phase 5, Section 32 & 66) */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-blackbox-cyan" />
-          <h3 className="text-sm font-mono font-bold text-blackbox-text uppercase tracking-wider">
-            Operational Workspace Modules
-          </h3>
+      {/* Tactical Modules: Team Roster & Operational Tasks (Sections 45, 46, 50, 59) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-6">
+          <MissionTeamPanel
+            missionId={selectedMission.id}
+            members={members}
+            isCommander={canManage}
+            currentUserRole={user?.role}
+            onAddMember={async (userId) => {
+              await addMember(selectedMission.id, userId);
+            }}
+            onRemoveMember={async (userId) => {
+              await removeMember(selectedMission.id, userId);
+            }}
+            isLoading={isTeamLoading}
+          />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Team Roster Placeholder */}
-          <div className="p-5 rounded-xl bg-blackbox-surface/60 border border-dashed border-blackbox-border flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-semibold text-blackbox-text">
-                  <Users className="w-4 h-4 text-zinc-400" />
-                  <span>Assigned Tactical Team</span>
-                </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blackbox-panel text-zinc-400 border border-blackbox-border">
-                  PHASE 4
-                </span>
-              </div>
-              <p className="text-xs text-blackbox-muted leading-relaxed">
-                Unit roster, field operator deployment assignments, and operational role allocation will be linked in Phase 4.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-blackbox-border/40 text-[11px] font-mono text-zinc-500">
-              Module: team-management
-            </div>
-          </div>
-
-          {/* Task Operations Placeholder */}
-          <div className="p-5 rounded-xl bg-blackbox-surface/60 border border-dashed border-blackbox-border flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-semibold text-blackbox-text">
-                  <CheckSquare className="w-4 h-4 text-zinc-400" />
-                  <span>Mission Tasks & Objectives</span>
-                </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blackbox-panel text-zinc-400 border border-blackbox-border">
-                  PHASE 4
-                </span>
-              </div>
-              <p className="text-xs text-blackbox-muted leading-relaxed">
-                Checkpoints, field task checklist, sub-task status reports, and operator dispatch workflows will be unlocked in Phase 4.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-blackbox-border/40 text-[11px] font-mono text-zinc-500">
-              Module: task-operations
-            </div>
-          </div>
-
-          {/* Live Activity & Event Replay Placeholder */}
-          <div className="p-5 rounded-xl bg-blackbox-surface/60 border border-dashed border-blackbox-border flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs font-mono font-semibold text-blackbox-text">
-                  <Activity className="w-4 h-4 text-zinc-400" />
-                  <span>Real-Time Events & Replay</span>
-                </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blackbox-panel text-zinc-400 border border-blackbox-border">
-                  PHASE 5
-                </span>
-              </div>
-              <p className="text-xs text-blackbox-muted leading-relaxed">
-                Immutable event stream ledger, operational timeline reconstruction, and mission replay will be enabled in Phase 5.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-blackbox-border/40 text-[11px] font-mono text-zinc-500">
-              Module: event-ledger-replay
-            </div>
-          </div>
+        <div className="lg:col-span-2 space-y-6">
+          <TaskList
+            missionId={selectedMission.id}
+            tasks={tasks}
+            stats={taskStats}
+            members={members}
+            isCommander={canManage}
+            currentUserId={user?.id || ''}
+            currentUserRole={user?.role}
+            missionOperational={
+              selectedMission.status === 'DRAFT' || selectedMission.status === 'ACTIVE'
+            }
+            isLoading={isTasksLoading}
+            onCreateTask={async (payload) => {
+              await createTask(selectedMission.id, payload);
+            }}
+            onAssignTask={async (taskId, userId) => {
+              await assignTask(taskId, userId);
+            }}
+            onUnassignTask={async (taskId) => {
+              await unassignTask(taskId);
+            }}
+            onStatusChange={async (taskId, status) => {
+              await updateTaskStatus(taskId, status);
+            }}
+          />
         </div>
       </div>
 
