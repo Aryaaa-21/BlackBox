@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { MissionMember, ApiError } from '../types';
 import { teamApi } from '../services/teamApi';
+import { missionRepository } from '../offline/mission.repository';
 
 interface TeamState {
   members: MissionMember[];
@@ -32,9 +33,19 @@ export const useTeamStore = create<TeamState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const members = await teamApi.getMissionMembers(missionId, includeRemoved);
+      // Phase 6: cache members in IndexedDB for offline access
+      missionRepository.cacheMembers(missionId, members).catch(() => {});
       set({ members, isLoading: false });
     } catch (err: unknown) {
       const error = err as ApiError;
+
+      // Phase 6: fall back to cached members if network fails
+      if (error.code === 'NETWORK_UNAVAILABLE' || !navigator.onLine) {
+        const cached = await missionRepository.getCachedMembers(missionId);
+        set({ members: cached, isLoading: false });
+        return;
+      }
+
       set({
         error: error.message || 'Unable to load mission team members.',
         isLoading: false,

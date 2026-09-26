@@ -28,10 +28,22 @@ import { MissionTeamPanel } from '../components/Team/MissionTeamPanel';
 import { TaskList } from '../components/Tasks/TaskList';
 import { MissionActivityFeed } from '../components/Events/MissionActivityFeed';
 import { ConnectionStatusIndicator } from '../components/Events/ConnectionStatusIndicator';
+import { OfflineBanner } from '../components/Offline/OfflineBanner';
+import { PendingMutationsPanel } from '../components/Offline/PendingMutationsPanel';
 import { socketService } from '../services/socket';
 import { Mission, MissionSeverity, MissionMember, Task, MissionEventCreatedPayload } from '../types';
+import { useOfflineStore } from '../offline/offlineStore';
+import { missionRepository } from '../offline/mission.repository';
+import { taskRepository } from '../offline/task.repository';
 
 export const MissionDetailPage: React.FC = () => {
+  // Phase 6: offline store
+  const offlineMode = useOfflineStore((s) => s.mode);
+  const isOperationallyOnline = useOfflineStore((s) => s.isOperationallyOnline);
+  const setCurrentMission = useOfflineStore((s) => s.setCurrentMission);
+  const setMissionCacheInfo = useOfflineStore((s) => s.setMissionCacheInfo);
+  const deviceId = useOfflineStore((s) => s.deviceId);
+  const refreshPendingCountForMission = useOfflineStore((s) => s.refreshPendingCountForMission);
   const { missionId } = useParams<{ missionId: string }>();
   const { user } = useAuthStore();
   const {
@@ -68,10 +80,7 @@ export const MissionDetailPage: React.FC = () => {
     stats: taskStats,
     isLoading: isTasksLoading,
     fetchTasks,
-    createTask,
-    assignTask,
     unassignTask,
-    updateTaskStatus,
     handleTaskCreated,
     handleTaskUpdated,
     handleTaskAssigned,
@@ -121,6 +130,14 @@ export const MissionDetailPage: React.FC = () => {
   // Load mission, members, tasks, and join Socket room (Section 62 & 108)
   useEffect(() => {
     if (!missionId) return;
+
+    // Phase 6: Register current mission in offline store
+    setCurrentMission(missionId);
+
+    // Phase 6: Check if mission is cached for offline indicator
+    missionRepository.getCachedAt(missionId).then((cachedAt) => {
+      setMissionCacheInfo(cachedAt);
+    });
 
     fetchMission(missionId).catch(() => {});
     fetchMembers(missionId).catch(() => {});
@@ -221,6 +238,9 @@ export const MissionDetailPage: React.FC = () => {
       clearMembers();
       clearTasks();
       clearEvents();
+      // Phase 6: deregister current mission
+      setCurrentMission(null);
+      setMissionCacheInfo(null);
     };
   }, [
     missionId,
@@ -244,6 +264,8 @@ export const MissionDetailPage: React.FC = () => {
     clearEvents,
     fetchEvents,
     addEvent,
+    setCurrentMission,
+    setMissionCacheInfo,
   ]);
 
   // Set edit form values when selectedMission loads or modal opens
@@ -391,6 +413,10 @@ export const MissionDetailPage: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Phase 6: Offline/degraded status banner */}
+      {offlineMode !== 'ONLINE' && missionId && (
+        <OfflineBanner missionId={missionId} className="w-full" />
+      )}
       {/* Top Navigation */}
       <div className="flex items-center justify-between pb-4 border-b border-blackbox-border">
         <div className="flex items-center gap-3">
@@ -595,6 +621,11 @@ export const MissionDetailPage: React.FC = () => {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {/* Phase 6: Pending mutations panel — shown when offline and changes are queued */}
+          {missionId && (
+            <PendingMutationsPanel missionId={missionId} />
+          )}
+
           <TaskList
             missionId={selectedMission.id}
             tasks={tasks}
@@ -607,17 +638,59 @@ export const MissionDetailPage: React.FC = () => {
               selectedMission.status === 'DRAFT' || selectedMission.status === 'ACTIVE'
             }
             isLoading={isTasksLoading}
+            isOffline={offlineMode !== 'ONLINE'}
             onCreateTask={async (payload) => {
-              await createTask(selectedMission.id, payload);
+              // Phase 6: Route through repository for offline support
+              if (!user) return;
+              const result = await taskRepository.createTask(
+                selectedMission.id,
+                payload,
+                user.id,
+                user.name,
+                deviceId,
+                isOperationallyOnline()
+              );
+              handleTaskCreated(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
             }}
             onAssignTask={async (taskId, userId) => {
-              await assignTask(taskId, userId);
+              // Assignment: prefer online path; offline only if member is cached
+              const member = members.find((m) => m.userId.id === userId);
+              if (!user) return;
+              const result = await taskRepository.assignTask(
+                taskId,
+                selectedMission.id,
+                userId,
+                member?.userId.name ?? '',
+                user.id,
+                deviceId,
+                isOperationallyOnline()
+              );
+              handleTaskAssigned(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
             }}
             onUnassignTask={async (taskId) => {
               await unassignTask(taskId);
             }}
             onStatusChange={async (taskId, status) => {
-              await updateTaskStatus(taskId, status);
+              // Phase 6: Route through repository for offline support
+              if (!user) return;
+              const result = await taskRepository.updateTaskStatus(
+                taskId,
+                selectedMission.id,
+                status,
+                user.id,
+                deviceId,
+                isOperationallyOnline()
+              );
+              handleTaskStatusChanged(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
             }}
           />
         </div>

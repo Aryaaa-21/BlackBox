@@ -10,6 +10,7 @@ import {
   ApiError,
 } from '../types';
 import { taskApi } from '../services/taskApi';
+import { taskRepository } from '../offline/task.repository';
 
 interface TaskState {
   tasks: Task[];
@@ -71,6 +72,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const activeFilters = customFilters || get().filters;
       const result = await taskApi.getMissionTasks(missionId, activeFilters);
+      // Phase 6: cache tasks in IndexedDB for offline access
+      taskRepository.cacheTasks(result.tasks, missionId).catch(() => {});
       set({
         tasks: result.tasks,
         stats: result.stats,
@@ -79,6 +82,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       });
     } catch (err: unknown) {
       const error = err as ApiError;
+
+      // Phase 6: fall back to cached tasks if network fails
+      if (error.code === 'NETWORK_UNAVAILABLE' || !navigator.onLine) {
+        const cached = await taskRepository.getCachedTasks(missionId);
+        if (cached.length > 0) {
+          set({
+            tasks: cached,
+            stats: computeStats(cached),
+            isLoading: false,
+          });
+          return;
+        }
+      }
+
       set({
         error: error.message || 'Unable to retrieve mission tasks.',
         isLoading: false,

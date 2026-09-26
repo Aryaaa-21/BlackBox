@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { missionApi } from '../services/missionApi';
 import { socketService } from '../services/socket';
+import { missionRepository } from '../offline/mission.repository';
 
 interface MissionState {
   missions: Mission[];
@@ -83,10 +84,22 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const mission = await missionApi.getMission(missionId);
+      // Phase 6: cache to IndexedDB for offline access
+      missionRepository.cacheMission(mission).catch(() => {});
       set({ selectedMission: mission, isLoading: false });
       return mission;
     } catch (err: unknown) {
       const error = err as ApiError;
+
+      // Phase 6: fall back to IndexedDB cache if network fails
+      if (error.code === 'NETWORK_UNAVAILABLE' || !navigator.onLine) {
+        const cached = await missionRepository.getCachedMission(missionId);
+        if (cached) {
+          set({ selectedMission: cached, isLoading: false });
+          return cached;
+        }
+      }
+
       set({
         error: error.message || 'Mission not found.',
         isLoading: false,

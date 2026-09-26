@@ -32,6 +32,7 @@ interface TaskListProps {
   currentUserRole?: UserRole;
   missionOperational: boolean;
   isLoading?: boolean;
+  isOffline?: boolean;
   onCreateTask: (payload: CreateTaskPayload) => Promise<void>;
   onAssignTask: (taskId: string, userId: string) => Promise<void>;
   onUnassignTask: (taskId: string) => Promise<void>;
@@ -48,6 +49,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   currentUserRole,
   missionOperational,
   isLoading = false,
+  isOffline = false,
   onCreateTask,
   onAssignTask,
   onUnassignTask,
@@ -130,6 +132,11 @@ export const TaskList: React.FC<TaskListProps> = ({
           <h2 className="text-sm font-mono font-bold text-blackbox-text uppercase tracking-wider flex items-center gap-2">
             <ListTodo className="w-4 h-4 text-blackbox-cyan" />
             OPERATIONAL TASKS ({taskStats.total})
+            {isOffline && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-amber-700/40 bg-amber-950/20 text-amber-400">
+                OFFLINE
+              </span>
+            )}
           </h2>
           <p className="text-[11px] font-mono text-blackbox-textSecondary mt-0.5">
             Mission objectives, tactical status, and direct field delegation
