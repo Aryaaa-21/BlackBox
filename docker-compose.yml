@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: blackbox-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: blackbox
+    volumes:
+      - blackbox-mongodb-data:/data/db
+
+volumes:
+  blackbox-mongodb-data:
+    driver: local
