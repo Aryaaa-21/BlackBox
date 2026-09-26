@@ -21,7 +21,11 @@ import { useAuthStore } from '../store/authStore';
 import { useConnectivityStore } from '../store/connectivityStore';
 import { socketService } from '../services/socket';
 import { api } from '../services/api';
-import { ApiResponse } from '../types';
+import { missionApi } from '../services/missionApi';
+import { ApiResponse, Mission, MissionStats } from '../types';
+import { MissionStatusBadge } from '../components/Missions/MissionStatusBadge';
+import { MissionSeverityBadge } from '../components/Missions/MissionSeverityBadge';
+import { Link } from 'react-router-dom';
 
 interface RealtimeLog {
   id: string;
@@ -51,7 +55,30 @@ export const DashboardPage: React.FC = () => {
     isError: boolean;
   }>({ loading: false, result: null, isError: false });
 
+  // Real Mission Data from MongoDB (Section 37 & 38)
+  const [missionStats, setMissionStats] = useState<MissionStats | null>(null);
+  const [recentMissions, setRecentMissions] = useState<Mission[]>([]);
+  const [loadingMissions, setLoadingMissions] = useState(true);
+
   const isCommander = user?.role === 'COMMANDER';
+
+  const loadMissionData = async () => {
+    try {
+      setLoadingMissions(true);
+      const [stats, res] = await Promise.all([
+        missionApi.getMissionStats().catch(() => null),
+        missionApi.getMissions({ limit: 5 }).catch(() => ({ missions: [] })),
+      ]);
+      if (stats) setMissionStats(stats);
+      if (res && res.missions) setRecentMissions(res.missions);
+    } finally {
+      setLoadingMissions(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMissionData();
+  }, []);
 
   useEffect(() => {
     // Listen for socket events to display in live event terminal
@@ -86,7 +113,10 @@ export const DashboardPage: React.FC = () => {
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    await checkServerHealth();
+    await Promise.all([
+      checkServerHealth(),
+      loadMissionData(),
+    ]);
     socketService.ping();
     setTimeout(() => setIsRefreshing(false), 500);
   };
@@ -98,6 +128,7 @@ export const DashboardPage: React.FC = () => {
     } else {
       setNetworkAvailable(true);
       checkServerHealth();
+      loadMissionData();
       socketService.connect();
     }
   };
@@ -132,7 +163,7 @@ export const DashboardPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-blackbox-cyan animate-pulse" />
             <span className="text-xs font-mono text-blackbox-cyan uppercase tracking-wider font-semibold">
-              TACTICAL OPERATIONS // PHASE 2 IDENTITY
+              TACTICAL OPERATIONS // PHASE 3 MISSION MANAGEMENT
             </span>
           </div>
           <h2 className="text-2xl font-bold font-mono text-blackbox-text mt-1 flex items-center gap-3">
@@ -245,6 +276,138 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Real Mission Statistics from MongoDB (Section 37 & 67) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <RadioTower className="w-4 h-4 text-blackbox-cyan" />
+            <h3 className="text-xs font-mono uppercase tracking-wider font-semibold text-blackbox-text">
+              Operational Missions Summary (MongoDB Live)
+            </h3>
+          </div>
+          <Link
+            to="/missions"
+            className="text-xs font-mono text-blackbox-cyan hover:underline flex items-center gap-1"
+          >
+            <span>View All Missions</span>
+            <span>&rarr;</span>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* Total Missions */}
+          <Link
+            to="/missions"
+            className="p-4 rounded-xl bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border transition-all block group"
+          >
+            <div className="text-[11px] font-mono text-blackbox-muted uppercase mb-1">
+              TOTAL MISSIONS
+            </div>
+            <div className="text-2xl font-bold font-mono text-blackbox-text group-hover:text-blackbox-cyan transition-colors">
+              {loadingMissions ? '—' : missionStats?.total ?? 0}
+            </div>
+            <div className="text-[10px] font-mono text-zinc-500 mt-1">Accessible in sector</div>
+          </Link>
+
+          {/* Active Missions */}
+          <Link
+            to="/missions"
+            className="p-4 rounded-xl bg-cyan-950/20 hover:bg-cyan-950/40 border border-cyan-900/60 transition-all block group"
+          >
+            <div className="text-[11px] font-mono text-blackbox-cyan uppercase mb-1 flex items-center justify-between">
+              <span>ACTIVE</span>
+              <span className="w-2 h-2 rounded-full bg-blackbox-cyan animate-pulse" />
+            </div>
+            <div className="text-2xl font-bold font-mono text-blackbox-cyan">
+              {loadingMissions ? '—' : missionStats?.active ?? 0}
+            </div>
+            <div className="text-[10px] font-mono text-cyan-400/80 mt-1">Live tactical directives</div>
+          </Link>
+
+          {/* Draft Missions */}
+          <Link
+            to="/missions"
+            className="p-4 rounded-xl bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border transition-all block group"
+          >
+            <div className="text-[11px] font-mono text-blackbox-muted uppercase mb-1">
+              DRAFT
+            </div>
+            <div className="text-2xl font-bold font-mono text-zinc-300">
+              {loadingMissions ? '—' : missionStats?.draft ?? 0}
+            </div>
+            <div className="text-[10px] font-mono text-zinc-500 mt-1">Pre-operational planning</div>
+          </Link>
+
+          {/* Completed Missions */}
+          <Link
+            to="/missions"
+            className="p-4 rounded-xl bg-emerald-950/20 hover:bg-emerald-950/40 border border-emerald-900/60 transition-all block group"
+          >
+            <div className="text-[11px] font-mono text-emerald-400 uppercase mb-1">
+              COMPLETED
+            </div>
+            <div className="text-2xl font-bold font-mono text-emerald-400">
+              {loadingMissions ? '—' : missionStats?.completed ?? 0}
+            </div>
+            <div className="text-[10px] font-mono text-emerald-500/80 mt-1">Mission objectives fulfilled</div>
+          </Link>
+        </div>
+      </div>
+
+      {/* Recent Real Missions Section (Section 38) */}
+      <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-blackbox-border">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-blackbox-cyan" />
+            <h3 className="text-xs font-mono uppercase tracking-wider font-semibold text-blackbox-text">
+              Recent Missions
+            </h3>
+          </div>
+          {isCommander && (
+            <Link
+              to="/missions/new"
+              className="text-xs font-mono text-blackbox-cyan hover:underline"
+            >
+              + Create New Mission
+            </Link>
+          )}
+        </div>
+
+        {recentMissions.length === 0 ? (
+          <div className="text-center py-6 font-mono text-xs text-blackbox-muted">
+            {isCommander
+              ? 'No operational missions recorded in MongoDB yet. Create one to commence.'
+              : 'No operational missions currently assigned to your callsign.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-blackbox-border/60">
+            {recentMissions.map((m) => (
+              <Link
+                key={m.id}
+                to={`/missions/${m.id}`}
+                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-blackbox-panel/40 px-2 rounded-lg transition-colors group"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-mono font-bold text-blackbox-text group-hover:text-blackbox-cyan transition-colors truncate">
+                    {m.title}
+                  </div>
+                  <div className="text-xs font-mono text-blackbox-muted flex items-center gap-2 mt-0.5">
+                    <span>{m.location}</span>
+                    <span>•</span>
+                    <span>{new Date(m.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <MissionSeverityBadge severity={m.severity} size="sm" />
+                  <MissionStatusBadge status={m.status} size="sm" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Primary Status Telemetry Grid */}

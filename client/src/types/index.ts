@@ -2,7 +2,8 @@ export type UserRole = 'COMMANDER' | 'FIELD_OPERATOR';
 
 export type MissionStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
-export type SeverityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type MissionSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type SeverityLevel = MissionSeverity;
 
 export interface User {
   id: string;
@@ -15,16 +16,66 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface MissionCreator {
+  id: string;
+  name: string;
+  email?: string;
+  role?: UserRole;
+}
+
 export interface Mission {
   id: string;
   title: string;
   description: string;
   location: string;
-  severity: SeverityLevel;
+  severity: MissionSeverity;
   status: MissionStatus;
-  createdBy: string;
+  createdBy: MissionCreator | string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type MissionSummary = Mission;
+export type MissionDetail = Mission;
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface MissionStats {
+  total: number;
+  active: number;
+  draft: number;
+  completed: number;
+  cancelled: number;
+}
+
+export interface MissionFilters {
+  status?: MissionStatus;
+  severity?: MissionSeverity;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateMissionPayload {
+  title: string;
+  description: string;
+  location: string;
+  severity: MissionSeverity;
+}
+
+export interface UpdateMissionPayload {
+  title?: string;
+  description?: string;
+  location?: string;
+  severity?: MissionSeverity;
 }
 
 export type ConnectivityStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
@@ -61,3 +112,4 @@ export interface SystemHealthData {
   timestamp: string;
   version: string;
 }
+

@@ -57,7 +57,7 @@ export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
     const user = socket.data.user as UserPayload;
     console.log(`[Socket.IO] Authenticated operator connected: ${user.name} (${user.role}) [ID: ${user.id}, Socket: ${socket.id}]`);
 
-    // Join private user room (Section 28)
+    // Join private user room
     const userRoom = `user:${user.id}`;
     socket.join(userRoom);
     socket.join(`role:${user.role}`);
@@ -83,6 +83,51 @@ export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
       });
     });
 
+    // Mission Room Authorization & Subscription (Sections 39 & 40)
+    socket.on(
+      'mission:join',
+      async (
+        data: string | { missionId: string },
+        callback?: (res: { success: boolean; error?: string; room?: string }) => void
+      ) => {
+        try {
+          const missionId = typeof data === 'string' ? data : data?.missionId;
+          if (!missionId) {
+            if (callback) callback({ success: false, error: 'MISSION_ID_REQUIRED' });
+            return;
+          }
+
+          // Dynamic import to prevent circular dependency
+          const { missionService } = await import('../services/mission.service');
+          const canAccess = await missionService.canUserAccessMission(missionId, user);
+
+          if (!canAccess) {
+            console.warn(`[Socket.IO] Access denied: User ${user.name} tried to join mission:${missionId}`);
+            if (callback) callback({ success: false, error: 'MISSION_ACCESS_DENIED' });
+            return;
+          }
+
+          const roomName = `mission:${missionId}`;
+          socket.join(roomName);
+          console.log(`[Socket.IO] Operator ${user.name} joined operational room ${roomName}`);
+          if (callback) callback({ success: true, room: roomName });
+        } catch (err: unknown) {
+          const error = err as Error;
+          if (callback) callback({ success: false, error: error.message });
+        }
+      }
+    );
+
+    // Leave mission room
+    socket.on('mission:leave', (data: string | { missionId: string }) => {
+      const missionId = typeof data === 'string' ? data : data?.missionId;
+      if (missionId) {
+        const roomName = `mission:${missionId}`;
+        socket.leave(roomName);
+        console.log(`[Socket.IO] Operator ${user.name} left operational room ${roomName}`);
+      }
+    });
+
     socket.on('disconnect', (reason: string) => {
       console.log(`[Socket.IO] Operator disconnected: ${user.name} (${socket.id}) - Reason: ${reason}`);
     });
@@ -104,5 +149,14 @@ export const getIO = (): SocketIOServer => {
 export const emitToUser = (userId: string, event: string, data: unknown): void => {
   if (io) {
     io.to(`user:${userId}`).emit(event, data);
+  }
+};
+
+/**
+ * Emit a real-time event to an operational mission room
+ */
+export const emitToMission = (missionId: string, event: string, data: unknown): void => {
+  if (io) {
+    io.to(`mission:${missionId}`).emit(event, data);
   }
 };

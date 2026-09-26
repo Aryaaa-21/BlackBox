@@ -1,14 +1,17 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { MissionStatus } from '../types';
+import { MissionStatus, MissionSeverity } from '../types';
 
 export interface IMissionDocument extends Document {
   id: string;
   title: string;
   description: string;
   location: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: MissionSeverity;
   status: MissionStatus;
-  createdBy: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId | { id: string; name: string; email?: string };
+  startedAt?: Date | null;
+  completedAt?: Date | null;
+  cancelledAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,11 +28,13 @@ const MissionSchema = new Schema<IMissionDocument>(
       type: String,
       required: [true, 'Mission description is required'],
       trim: true,
+      maxlength: [5000, 'Description cannot exceed 5000 characters'],
     },
     location: {
       type: String,
       required: [true, 'Mission location is required'],
       trim: true,
+      maxlength: [200, 'Location cannot exceed 200 characters'],
     },
     severity: {
       type: String,
@@ -50,6 +55,18 @@ const MissionSchema = new Schema<IMissionDocument>(
       required: true,
       index: true,
     },
+    startedAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -62,7 +79,21 @@ const MissionSchema = new Schema<IMissionDocument>(
         return ret;
       },
     },
+    toObject: {
+      virtuals: true,
+      transform: (_doc, ret: Record<string, unknown>) => {
+        ret.id = (ret._id as mongoose.Types.ObjectId).toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
+
+// Compound indexes for optimal operational querying (Section 21)
+MissionSchema.index({ createdBy: 1, status: 1 });
+MissionSchema.index({ status: 1, createdAt: -1 });
+MissionSchema.index({ createdAt: -1 });
 
 export const Mission = mongoose.model<IMissionDocument>('Mission', MissionSchema);

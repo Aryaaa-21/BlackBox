@@ -4,6 +4,8 @@ export type UserRole = 'COMMANDER' | 'FIELD_OPERATOR';
 
 export type MissionStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
+export type MissionSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
 export interface UserPayload {
   id: string;
   email: string;
@@ -27,4 +29,19 @@ export interface ApiErrorResponse {
   message: string;
   code: string;
   details?: unknown;
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface MissionStats {
+  total: number;
+  active: number;
+  draft: number;
+  completed: number;
+  cancelled: number;
 }

@@ -5,10 +5,12 @@ import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { MissionsPage } from '../pages/MissionsPage';
+import { CreateMissionPage } from '../pages/CreateMissionPage';
 import { MissionDetailPage } from '../pages/MissionDetailPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProtectedRoute } from './ProtectedRoute';
+import { RoleGuard } from './RoleGuard';
 import { AppShell } from '../layouts/AppShell';
 
 export const AppRoutes: React.FC = () => {
@@ -29,6 +31,14 @@ export const AppRoutes: React.FC = () => {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/missions" element={<MissionsPage />} />
+        <Route
+          path="/missions/new"
+          element={
+            <RoleGuard allowedRoles={['COMMANDER']}>
+              <CreateMissionPage />
+            </RoleGuard>
+          }
+        />
         <Route path="/missions/:missionId" element={<MissionDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
