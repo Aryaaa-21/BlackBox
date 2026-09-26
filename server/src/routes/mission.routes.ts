@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { missionController } from '../controllers/mission.controller';
 import { missionMemberController } from '../controllers/missionMember.controller';
 import { taskController } from '../controllers/task.controller';
+import { missionEventController } from '../controllers/missionEvent.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/role.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
@@ -102,6 +103,20 @@ router.post(
 // List Tasks within Mission (Commander & Active Members)
 router.get('/:missionId/tasks', (req, res, next) =>
   taskController.getMissionTasks(req, res, next)
+);
+
+// ==========================================
+// MISSION EVENT ROUTES (Phase 5)
+// ==========================================
+
+// List Mission Events (Commander & Active Members, Sections 22, 23, 24, 25)
+router.get('/:missionId/events', (req, res, next) =>
+  missionEventController.listEvents(req, res, next)
+);
+
+// Get Single Event Detail by ID
+router.get('/:missionId/events/:eventId', (req, res, next) =>
+  missionEventController.getEventById(req, res, next)
 );
 
 export default router;

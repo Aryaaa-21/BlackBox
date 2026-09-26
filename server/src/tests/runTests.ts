@@ -8,6 +8,9 @@ import { io as ClientSocket, Socket as ClientSocketType } from 'socket.io-client
 import supertest from 'supertest';
 import { User } from '../models/User';
 import { Mission } from '../models/Mission';
+import { MissionEvent } from '../models/MissionEvent';
+import { missionEventService } from '../services/missionEvent.service';
+import { MissionEventType, EventTargetType, EventSource } from '../types';
 
 async function runTests() {
   console.log('\n--- STARTING BLACKBOX PHASE 2 TEST SUITE ---\n');
@@ -941,6 +944,256 @@ async function runTests() {
     assert(taskCreatedEventReceived, 'Operator socket received real-time task:created event in mission room');
 
     operatorSocket.disconnect();
+
+    // ==============================================================
+    // --- STARTING BLACKBOX PHASE 5 EVENT SYSTEM & REAL-TIME TESTS ---
+    // ==============================================================
+    console.log('\n--- STARTING BLACKBOX PHASE 5 EVENT SYSTEM & REAL-TIME TESTS ---\n');
+
+    // 1. Mission Lifecycle Events in MongoDB (Section 26 & 88)
+    const missionCreatedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'MISSION_CREATED',
+    });
+    assert(Boolean(missionCreatedEvent), 'Mission creation automatically persisted MISSION_CREATED event');
+    assert(
+      (missionCreatedEvent?.payload as any)?.title === 'Campus Building B Emergency Drill',
+      'MISSION_CREATED event recorded correct mission title'
+    );
+    assert(
+      missionCreatedEvent?.targetType === 'MISSION',
+      'MISSION_CREATED targetType is MISSION'
+    );
+
+    const missionStartedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'MISSION_STARTED',
+    });
+    assert(Boolean(missionStartedEvent), 'Mission start automatically persisted MISSION_STARTED event');
+
+    // 2. Team Membership Events in MongoDB (Section 27 & 88)
+    const memberAssignedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'MEMBER_ASSIGNED',
+    });
+    assert(Boolean(memberAssignedEvent), 'Adding field operator automatically persisted MEMBER_ASSIGNED event');
+
+    const memberRemovedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'MEMBER_REMOVED',
+    });
+    assert(Boolean(memberRemovedEvent), 'Removing operator automatically persisted MEMBER_REMOVED event');
+
+    const memberReactivatedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'MEMBER_REACTIVATED',
+    });
+    assert(Boolean(memberReactivatedEvent), 'Reactivating operator automatically persisted MEMBER_REACTIVATED event');
+
+    // 3. Task Mutation Events in MongoDB (Section 28 & 88)
+    const taskCreatedEvents = await MissionEvent.find({
+      missionId: drillMissionId,
+      eventType: 'TASK_CREATED',
+    });
+    assert(taskCreatedEvents.length >= 1, 'Task creation automatically persisted TASK_CREATED event');
+
+    const taskAssignedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'TASK_ASSIGNED',
+    });
+    assert(Boolean(taskAssignedEvent), 'Assigning task automatically persisted TASK_ASSIGNED event');
+
+    const taskUnassignedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'TASK_UNASSIGNED',
+    });
+    assert(Boolean(taskUnassignedEvent), 'Unassigning task automatically persisted TASK_UNASSIGNED event');
+
+    const taskStartedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'TASK_STARTED',
+    });
+    assert(Boolean(taskStartedEvent), 'Starting task automatically persisted TASK_STARTED event');
+
+    const taskBlockedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'TASK_BLOCKED',
+    });
+    assert(Boolean(taskBlockedEvent), 'Blocking task automatically persisted TASK_BLOCKED event');
+
+    const taskCompletedEvent = await MissionEvent.findOne({
+      missionId: drillMissionId,
+      eventType: 'TASK_COMPLETED',
+    });
+    assert(Boolean(taskCompletedEvent), 'Completing task automatically persisted TASK_COMPLETED event');
+
+    // 4. REST Event Retrieval API: GET /api/v1/missions/:missionId/events (Section 22, 23, 24)
+    const eventsListRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/events?page=1&limit=50`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+
+    assert(eventsListRes.status === 200, 'GET /missions/:missionId/events returns 200 OK');
+    assert(Array.isArray(eventsListRes.body.data.events), 'Events response contains events array');
+    assert(eventsListRes.body.data.events.length >= 8, 'Events response contains all generated events');
+    assert(eventsListRes.body.data.pagination.page === 1, 'Pagination page is 1');
+    assert(eventsListRes.body.data.pagination.total >= 8, 'Pagination total tracks total events');
+
+    // Actor details populated safely without leaking secrets (Section 15, 50, 106)
+    const firstEvent = eventsListRes.body.data.events[0];
+    assert(Boolean(firstEvent.actorId?.name), 'Event actor is populated with user name');
+    assert(firstEvent.actorId.password === undefined, 'Event actor does not leak password');
+    assert(firstEvent.actorId.passwordHash === undefined, 'Event actor does not leak passwordHash');
+
+    // 5. Event Chronological Ordering: newest first (Section 29 & 100)
+    const returnedEvents = eventsListRes.body.data.events;
+    let isChronological = true;
+    for (let i = 0; i < returnedEvents.length - 1; i++) {
+      const current = new Date(returnedEvents[i].createdAt).getTime();
+      const next = new Date(returnedEvents[i + 1].createdAt).getTime();
+      if (current < next) {
+        isChronological = false;
+        break;
+      }
+    }
+    assert(isChronological, 'Events are returned in deterministic descending chronological order (newest first)');
+
+    // 6. Event Immutability (Sections 13 & 89)
+    const immutabilityPatchRes = await request
+      .patch(`/api/v1/missions/${drillMissionId}/events/${firstEvent.id}`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ eventType: 'FAKE_MODIFIED' });
+    assert(
+      immutabilityPatchRes.status === 404,
+      'PATCH /missions/:missionId/events/:id returns 404 (Event modification is forbidden/not exposed)'
+    );
+
+    const immutabilityDeleteRes = await request
+      .delete(`/api/v1/missions/${drillMissionId}/events/${firstEvent.id}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(
+      immutabilityDeleteRes.status === 404,
+      'DELETE /missions/:missionId/events/:id returns 404 (Event deletion is forbidden/not exposed)'
+    );
+
+    // 7. Event Authorization (Sections 25 & 90)
+    // Authorized Field Operator member can read events
+    const opEventsRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/events`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(opEventsRes.status === 200, 'Assigned Field Operator can read mission events (200 OK)');
+
+    // Removed Member cannot read events (403)
+    await request
+      .delete(`/api/v1/missions/${drillMissionId}/members/${operatorAId}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+
+    const removedOpEventsRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/events`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(removedOpEventsRes.status === 403, 'Removed member is denied access to mission events (403 Forbidden)');
+
+    // Re-add operator to restore membership
+    await request
+      .post(`/api/v1/missions/${drillMissionId}/members`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ userId: operatorAId });
+
+    // Unrelated Commander B cannot read events (403)
+    const unrelatedEventsRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/events`)
+      .set('Authorization', `Bearer ${commanderBToken}`);
+    assert(unrelatedEventsRes.status === 403, 'Unrelated Commander B is denied access to mission events (403 Forbidden)');
+
+    // 8. Event Idempotency (Sections 20, 21, 94)
+    const key = `test-idempotency-${Date.now()}`;
+    const firstCall = await missionEventService.createMissionEvent({
+      missionId: drillMissionId,
+      actorId: commanderAId,
+      eventType: MissionEventType.TASK_CREATED,
+      targetType: EventTargetType.TASK,
+      payload: { title: 'Idempotency Test Task' },
+      source: EventSource.USER,
+      idempotencyKey: key,
+    });
+
+    const secondCall = await missionEventService.createMissionEvent({
+      missionId: drillMissionId,
+      actorId: commanderAId,
+      eventType: MissionEventType.TASK_CREATED,
+      targetType: EventTargetType.TASK,
+      payload: { title: 'Duplicate Attempt' },
+      source: EventSource.USER,
+      idempotencyKey: key,
+    });
+
+    assert(firstCall.id === secondCall.id, 'Idempotency returns existing event on duplicate key without duplicating');
+    const idempotencyCount = await MissionEvent.countDocuments({
+      missionId: drillMissionId,
+      idempotencyKey: key,
+    });
+    assert(idempotencyCount === 1, 'Only one event document is saved for a given idempotency key');
+
+    // 9. Real-time Socket.IO Broadcast: mission:event_created & Room Isolation (Sections 37, 95, 98)
+    const roomSocketA: ClientSocketType = ClientSocket(`http://localhost:${testPort}`, {
+      transports: ['websocket'],
+      auth: { token: operatorToken },
+      autoConnect: false,
+    });
+
+    const roomSocketB: ClientSocketType = ClientSocket(`http://localhost:${testPort}`, {
+      transports: ['websocket'],
+      auth: { token: commanderBToken },
+      autoConnect: false,
+    });
+
+    let roomAReceivedEventCreated = false;
+    let roomBReceivedEventCreated = false;
+
+    await new Promise<void>((resolve) => {
+      let connectedCount = 0;
+      const onBothConnected = () => {
+        connectedCount++;
+        if (connectedCount === 2) resolve();
+      };
+
+      roomSocketA.on('connect', () => {
+        roomSocketA.emit('mission:join', drillMissionId, () => {
+          roomSocketA.on('mission:event_created', (data: { missionId: string; event: { eventType: string } }) => {
+            if (data?.missionId === drillMissionId && data?.event?.eventType === 'TASK_CREATED') {
+              roomAReceivedEventCreated = true;
+            }
+          });
+          onBothConnected();
+        });
+      });
+
+      roomSocketB.on('connect', () => {
+        roomSocketB.on('mission:event_created', () => {
+          roomBReceivedEventCreated = true;
+        });
+        onBothConnected();
+      });
+
+      roomSocketA.connect();
+      roomSocketB.connect();
+    });
+
+    // Commander creates a task -> triggers real-time mission:event_created to drillMissionId room
+    await request
+      .post(`/api/v1/missions/${drillMissionId}/tasks`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        title: 'Realtime Broadcast Validation Task',
+        priority: 'HIGH',
+      });
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    assert(roomAReceivedEventCreated, 'Connected member receives real-time mission:event_created in mission room');
+    assert(!roomBReceivedEventCreated, 'Room isolation enforced: unrelated client does NOT receive mission:event_created');
+
+    roomSocketA.disconnect();
+    roomSocketB.disconnect();
 
     // Clean up
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

@@ -2,9 +2,10 @@ import mongoose from 'mongoose';
 import { Mission, IMissionDocument } from '../models/Mission';
 import { MissionMember } from '../models/MissionMember';
 import { AppError } from '../middleware/error.middleware';
-import { UserPayload, MissionStats, PaginationMeta } from '../types';
+import { UserPayload, MissionStats, PaginationMeta, MissionEventType, EventTargetType, EventSource } from '../types';
 import { CreateMissionInput, UpdateMissionInput, MissionQueryInput } from '../validators/mission.validator';
 import { getIO } from '../sockets/socket';
+import { missionEventService } from './missionEvent.service';
 
 export class MissionService {
   /**
@@ -55,6 +56,21 @@ export class MissionService {
       joinedAt: new Date(),
     });
     await commanderMembership.save();
+
+    // Persist immutable MISSION_CREATED event (Section 26 & 113)
+    await missionEventService.createMissionEvent({
+      missionId: mission._id.toString(),
+      actorId: userId,
+      eventType: MissionEventType.MISSION_CREATED,
+      targetType: EventTargetType.MISSION,
+      targetId: mission._id.toString(),
+      payload: {
+        missionId: mission._id.toString(),
+        title: mission.title,
+        severity: mission.severity,
+      },
+      source: EventSource.USER,
+    });
 
     // Real-time broadcast
     this.emitSocketEvent(`user:${userId}`, 'mission:created', mission);
@@ -272,6 +288,21 @@ export class MissionService {
     await mission.save();
     await mission.populate('createdBy', 'id name email role');
 
+    // Persist immutable MISSION_STARTED event (Section 26)
+    await missionEventService.createMissionEvent({
+      missionId: mission._id.toString(),
+      actorId: userId,
+      eventType: MissionEventType.MISSION_STARTED,
+      targetType: EventTargetType.MISSION,
+      targetId: mission._id.toString(),
+      payload: {
+        missionId: mission._id.toString(),
+        title: mission.title,
+        startedAt: mission.startedAt,
+      },
+      source: EventSource.USER,
+    });
+
     // Broadcast lifecycle event
     this.emitSocketEvent(`mission:${missionId}`, 'mission:started', mission);
     this.emitSocketEvent(`user:${userId}`, 'mission:started', mission);
@@ -317,6 +348,21 @@ export class MissionService {
     await mission.save();
     await mission.populate('createdBy', 'id name email role');
 
+    // Persist immutable MISSION_COMPLETED event (Section 26)
+    await missionEventService.createMissionEvent({
+      missionId: mission._id.toString(),
+      actorId: userId,
+      eventType: MissionEventType.MISSION_COMPLETED,
+      targetType: EventTargetType.MISSION,
+      targetId: mission._id.toString(),
+      payload: {
+        missionId: mission._id.toString(),
+        title: mission.title,
+        completedAt: mission.completedAt,
+      },
+      source: EventSource.USER,
+    });
+
     // Broadcast lifecycle event
     this.emitSocketEvent(`mission:${missionId}`, 'mission:completed', mission);
     this.emitSocketEvent(`user:${userId}`, 'mission:completed', mission);
@@ -351,6 +397,21 @@ export class MissionService {
     mission.cancelledAt = new Date();
     await mission.save();
     await mission.populate('createdBy', 'id name email role');
+
+    // Persist immutable MISSION_CANCELLED event (Section 26)
+    await missionEventService.createMissionEvent({
+      missionId: mission._id.toString(),
+      actorId: userId,
+      eventType: MissionEventType.MISSION_CANCELLED,
+      targetType: EventTargetType.MISSION,
+      targetId: mission._id.toString(),
+      payload: {
+        missionId: mission._id.toString(),
+        title: mission.title,
+        cancelledAt: mission.cancelledAt,
+      },
+      source: EventSource.USER,
+    });
 
     // Broadcast lifecycle event
     this.emitSocketEvent(`mission:${missionId}`, 'mission:cancelled', mission);

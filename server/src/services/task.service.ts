@@ -4,13 +4,14 @@ import { Mission } from '../models/Mission';
 import { User } from '../models/User';
 import { MissionMember } from '../models/MissionMember';
 import { AppError } from '../middleware/error.middleware';
-import { UserPayload, TaskStatus, TaskStats, PaginationMeta } from '../types';
+import { UserPayload, TaskStatus, TaskStats, PaginationMeta, MissionEventType, EventTargetType, EventSource } from '../types';
 import {
   CreateTaskInput,
   UpdateTaskInput,
   TaskQueryInput,
 } from '../validators/task.validator';
 import { getIO } from '../sockets/socket';
+import { missionEventService } from './missionEvent.service';
 
 export class TaskService {
   /**
@@ -148,6 +149,22 @@ export class TaskService {
       { path: 'assignedTo', select: 'id name email role' },
       { path: 'createdBy', select: 'id name email role' },
     ]);
+
+    // Persist immutable TASK_CREATED event (Section 28)
+    await missionEventService.createMissionEvent({
+      missionId,
+      actorId: commanderId,
+      eventType: MissionEventType.TASK_CREATED,
+      targetType: EventTargetType.TASK,
+      targetId: task._id.toString(),
+      payload: {
+        taskId: task._id.toString(),
+        title: task.title,
+        priority: task.priority,
+        status: task.status,
+      },
+      source: EventSource.USER,
+    });
 
     // 6. Broadcast event (Section 61)
     this.emitSocketEvent(`mission:${missionId}`, 'task:created', {
@@ -352,6 +369,21 @@ export class TaskService {
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
+    // Persist immutable TASK_UPDATED event (Section 28)
+    await missionEventService.createMissionEvent({
+      missionId: task.missionId.toString(),
+      actorId: commanderId,
+      eventType: MissionEventType.TASK_UPDATED,
+      targetType: EventTargetType.TASK,
+      targetId: task._id.toString(),
+      payload: {
+        taskId: task._id.toString(),
+        title: task.title,
+        priority: task.priority,
+      },
+      source: EventSource.USER,
+    });
+
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:updated', {
       missionId: task.missionId.toString(),
       task,
@@ -403,6 +435,23 @@ export class TaskService {
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
+    const assigneeName = (task.assignedTo as any)?.name || 'Operator';
+    // Persist immutable TASK_ASSIGNED event (Section 28)
+    await missionEventService.createMissionEvent({
+      missionId: task.missionId.toString(),
+      actorId: commanderId,
+      eventType: MissionEventType.TASK_ASSIGNED,
+      targetType: EventTargetType.TASK,
+      targetId: task._id.toString(),
+      payload: {
+        taskId: task._id.toString(),
+        title: task.title,
+        assignedTo: targetUserId,
+        assigneeName,
+      },
+      source: EventSource.USER,
+    });
+
     // Real-time broadcast (Section 61)
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:assigned', {
       missionId: task.missionId.toString(),
@@ -446,6 +495,20 @@ export class TaskService {
       { path: 'assignedTo', select: 'id name email role' },
       { path: 'createdBy', select: 'id name email role' },
     ]);
+
+    // Persist immutable TASK_UNASSIGNED event (Section 28)
+    await missionEventService.createMissionEvent({
+      missionId: task.missionId.toString(),
+      actorId: commanderId,
+      eventType: MissionEventType.TASK_UNASSIGNED,
+      targetType: EventTargetType.TASK,
+      targetId: task._id.toString(),
+      payload: {
+        taskId: task._id.toString(),
+        title: task.title,
+      },
+      source: EventSource.USER,
+    });
 
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:unassigned', {
       missionId: task.missionId.toString(),
@@ -580,6 +643,28 @@ export class TaskService {
       { path: 'assignedTo', select: 'id name email role' },
       { path: 'createdBy', select: 'id name email role' },
     ]);
+
+    let eventType: MissionEventType = MissionEventType.TASK_STARTED;
+    if (newStatus === 'BLOCKED') {
+      eventType = MissionEventType.TASK_BLOCKED;
+    } else if (newStatus === 'COMPLETED') {
+      eventType = MissionEventType.TASK_COMPLETED;
+    }
+
+    // Persist immutable TASK_STARTED / TASK_BLOCKED / TASK_COMPLETED event (Section 28)
+    await missionEventService.createMissionEvent({
+      missionId: task.missionId.toString(),
+      actorId: user.id,
+      eventType,
+      targetType: EventTargetType.TASK,
+      targetId: task._id.toString(),
+      payload: {
+        taskId: task._id.toString(),
+        title: task.title,
+        status: newStatus,
+      },
+      source: EventSource.USER,
+    });
 
     // Broadcast status change (Section 61)
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:status_changed', {

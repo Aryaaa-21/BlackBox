@@ -6,6 +6,7 @@ class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
   private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
+  private activeMissionId: string | null = null;
 
   connect(authToken?: string): Socket | null {
     const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem('blackbox_token') : null);
@@ -39,6 +40,10 @@ class SocketService {
       this.isConnected = true;
       console.log(`[Socket] Authenticated to BlackBox Realtime Stream (Socket ID: ${this.socket?.id})`);
       this.notifyListeners('connection_change', { connected: true, socketId: this.socket?.id });
+      // If we were inside an active mission prior to connect/reconnect, automatically rejoin
+      if (this.activeMissionId) {
+        this.socket?.emit('mission:join', { missionId: this.activeMissionId });
+      }
     });
 
     this.socket.on('system:welcome', (data) => {
@@ -62,7 +67,37 @@ class SocketService {
       this.notifyListeners('connection_error', error);
     });
 
+    // Capture and dispatch all server room broadcasts to registered subscribers
+    this.socket.onAny((event: string, ...args: unknown[]) => {
+      this.notifyListeners(event, args[0]);
+    });
+
+    // Reconnection handling (Sections 44 & 82)
+    this.socket.io.on('reconnect', (attempt: number) => {
+      console.log(`[Socket] Reconnection restored on attempt ${attempt}`);
+      this.notifyListeners('reconnect', { attempt });
+      if (this.activeMissionId) {
+        this.socket?.emit('mission:join', { missionId: this.activeMissionId });
+      }
+    });
+
     return this.socket;
+  }
+
+  joinMission(missionId: string): void {
+    this.activeMissionId = missionId;
+    if (this.socket && this.isConnected) {
+      this.socket.emit('mission:join', { missionId });
+    }
+  }
+
+  leaveMission(missionId: string): void {
+    if (this.activeMissionId === missionId) {
+      this.activeMissionId = null;
+    }
+    if (this.socket && this.isConnected) {
+      this.socket.emit('mission:leave', { missionId });
+    }
   }
 
   reconnectWithAuth(token: string): void {

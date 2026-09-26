@@ -3,8 +3,9 @@ import { MissionMember, IMissionMemberDocument } from '../models/MissionMember';
 import { Mission } from '../models/Mission';
 import { User } from '../models/User';
 import { AppError } from '../middleware/error.middleware';
-import { UserPayload } from '../types';
+import { UserPayload, MissionEventType, EventTargetType, EventSource } from '../types';
 import { getIO } from '../sockets/socket';
+import { missionEventService } from './missionEvent.service';
 
 export class MissionMemberService {
   /**
@@ -133,6 +134,22 @@ export class MissionMemberService {
       await membership.save();
       await membership.populate('userId', 'id name email role');
 
+      // Persist immutable MEMBER_REACTIVATED event (Section 27)
+      const reactivatedUserName = (membership.userId as any)?.name || 'Field Operator';
+      await missionEventService.createMissionEvent({
+        missionId,
+        actorId: commanderId,
+        eventType: MissionEventType.MEMBER_REACTIVATED,
+        targetType: EventTargetType.MEMBER,
+        targetId: membership._id.toString(),
+        payload: {
+          userId: targetUserId,
+          userName: reactivatedUserName,
+          role: membership.role,
+        },
+        source: EventSource.USER,
+      });
+
       // Realtime notification
       this.emitSocketEvent(`mission:${missionId}`, 'mission:member_reactivated', {
         missionId,
@@ -157,6 +174,22 @@ export class MissionMemberService {
 
     await membership.save();
     await membership.populate('userId', 'id name email role');
+
+    // Persist immutable MEMBER_ASSIGNED event (Section 27)
+    const addedUserName = (membership.userId as any)?.name || 'Field Operator';
+    await missionEventService.createMissionEvent({
+      missionId,
+      actorId: commanderId,
+      eventType: MissionEventType.MEMBER_ASSIGNED,
+      targetType: EventTargetType.MEMBER,
+      targetId: membership._id.toString(),
+      payload: {
+        userId: targetUserId,
+        userName: addedUserName,
+        role: membership.role,
+      },
+      source: EventSource.USER,
+    });
 
     // Realtime notification
     this.emitSocketEvent(`mission:${missionId}`, 'mission:member_added', {
@@ -216,6 +249,22 @@ export class MissionMemberService {
     membership.status = 'REMOVED';
     await membership.save();
     await membership.populate('userId', 'id name email role');
+
+    // Persist immutable MEMBER_REMOVED event (Section 27)
+    const removedUserName = (membership.userId as any)?.name || 'Field Operator';
+    await missionEventService.createMissionEvent({
+      missionId,
+      actorId: commanderId,
+      eventType: MissionEventType.MEMBER_REMOVED,
+      targetType: EventTargetType.MEMBER,
+      targetId: membership._id.toString(),
+      payload: {
+        userId: targetUserId,
+        userName: removedUserName,
+        role: membership.role,
+      },
+      source: EventSource.USER,
+    });
 
     // Realtime broadcast
     this.emitSocketEvent(`mission:${missionId}`, 'mission:member_removed', {

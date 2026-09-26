@@ -18,6 +18,7 @@ import { useAuthStore } from '../store/authStore';
 import { useMissionStore } from '../store/missionStore';
 import { useTeamStore } from '../store/teamStore';
 import { useTaskStore } from '../store/taskStore';
+import { useMissionEventStore } from '../store/missionEventStore';
 import { MissionStatusBadge } from '../components/Missions/MissionStatusBadge';
 import { MissionSeverityBadge } from '../components/Missions/MissionSeverityBadge';
 import { ConfirmDialog } from '../components/Common/ConfirmDialog';
@@ -25,8 +26,10 @@ import { LoadingState } from '../components/Common/LoadingState';
 import { ErrorState } from '../components/Common/ErrorState';
 import { MissionTeamPanel } from '../components/Team/MissionTeamPanel';
 import { TaskList } from '../components/Tasks/TaskList';
+import { MissionActivityFeed } from '../components/Events/MissionActivityFeed';
+import { ConnectionStatusIndicator } from '../components/Events/ConnectionStatusIndicator';
 import { socketService } from '../services/socket';
-import { Mission, MissionSeverity, MissionMember, Task } from '../types';
+import { Mission, MissionSeverity, MissionMember, Task, MissionEventCreatedPayload } from '../types';
 
 export const MissionDetailPage: React.FC = () => {
   const { missionId } = useParams<{ missionId: string }>();
@@ -77,6 +80,12 @@ export const MissionDetailPage: React.FC = () => {
     clearTasks,
   } = useTaskStore();
 
+  const {
+    fetchEvents,
+    addEvent,
+    clearEvents,
+  } = useMissionEventStore();
+
   // Confirmation Modal states
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -116,7 +125,16 @@ export const MissionDetailPage: React.FC = () => {
     fetchMission(missionId).catch(() => {});
     fetchMembers(missionId).catch(() => {});
     fetchTasks(missionId).catch(() => {});
+    fetchEvents(missionId).catch(() => {});
     joinMissionRoom(missionId);
+
+    // Primary Real-time Mission Event Feed (Phase 5, Sections 37, 43, 61)
+    const unsubEventCreated = socketService.subscribe('mission:event_created', (data) => {
+      const payload = data as MissionEventCreatedPayload;
+      if (payload && payload.event && payload.missionId === missionId) {
+        addEvent(payload.event);
+      }
+    });
 
     // Mission lifecycle room broadcasts
     const unsubUpdated = socketService.subscribe('mission:updated', (data) => {
@@ -198,9 +216,11 @@ export const MissionDetailPage: React.FC = () => {
       unsubTaskAssigned();
       unsubTaskUnassigned();
       unsubTaskStatusChanged();
+      unsubEventCreated();
       clearSelectedMission();
       clearMembers();
       clearTasks();
+      clearEvents();
     };
   }, [
     missionId,
@@ -221,6 +241,9 @@ export const MissionDetailPage: React.FC = () => {
     clearSelectedMission,
     clearMembers,
     clearTasks,
+    clearEvents,
+    fetchEvents,
+    addEvent,
   ]);
 
   // Set edit form values when selectedMission loads or modal opens
@@ -391,11 +414,14 @@ export const MissionDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Channel Status */}
-        <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted">
-          <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
-          <span className="hidden sm:inline">Stream Channel:</span>
-          <span className="text-blackbox-text font-bold">mission:{selectedMission.id.substring(0, 6)}</span>
+        {/* Live Channel Status & Indicator */}
+        <div className="flex items-center gap-3">
+          <ConnectionStatusIndicator />
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted">
+            <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
+            <span>Channel:</span>
+            <span className="text-blackbox-text font-bold">mission:{selectedMission.id.substring(0, 6)}</span>
+          </div>
         </div>
       </div>
 
@@ -547,7 +573,7 @@ export const MissionDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tactical Modules: Team Roster & Operational Tasks (Sections 45, 46, 50, 59) */}
+      {/* Tactical Modules: Team Roster, Activity Feed & Operational Tasks (Sections 45, 46, 50, 53) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <MissionTeamPanel
@@ -563,6 +589,9 @@ export const MissionDetailPage: React.FC = () => {
             }}
             isLoading={isTeamLoading}
           />
+
+          {/* Mission Activity Feed (Phase 5, Section 47, 53) */}
+          <MissionActivityFeed missionId={selectedMission.id} />
         </div>
 
         <div className="lg:col-span-2 space-y-6">

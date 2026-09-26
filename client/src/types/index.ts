@@ -182,3 +182,77 @@ export interface SystemHealthData {
   version: string;
 }
 
+// ==========================================
+// PHASE 5: EVENT SYSTEM & REAL-TIME TYPES
+// ==========================================
+
+export enum MissionEventType {
+  MISSION_CREATED = 'MISSION_CREATED',
+  MISSION_STARTED = 'MISSION_STARTED',
+  MISSION_COMPLETED = 'MISSION_COMPLETED',
+  MISSION_CANCELLED = 'MISSION_CANCELLED',
+
+  MEMBER_ASSIGNED = 'MEMBER_ASSIGNED',
+  MEMBER_REMOVED = 'MEMBER_REMOVED',
+  MEMBER_REACTIVATED = 'MEMBER_REACTIVATED',
+
+  TASK_CREATED = 'TASK_CREATED',
+  TASK_UPDATED = 'TASK_UPDATED',
+  TASK_ASSIGNED = 'TASK_ASSIGNED',
+  TASK_UNASSIGNED = 'TASK_UNASSIGNED',
+  TASK_STARTED = 'TASK_STARTED',
+  TASK_BLOCKED = 'TASK_BLOCKED',
+  TASK_COMPLETED = 'TASK_COMPLETED',
+
+  OBSERVATION_RECORDED = 'OBSERVATION_RECORDED',
+}
+
+export enum EventTargetType {
+  MISSION = 'MISSION',
+  MEMBER = 'MEMBER',
+  TASK = 'TASK',
+  OBSERVATION = 'OBSERVATION',
+}
+
+export enum EventSource {
+  USER = 'USER',
+  SYSTEM = 'SYSTEM',
+}
+
+export interface MissionEventActor {
+  id: string;
+  name: string;
+  email?: string;
+  role?: UserRole;
+}
+
+export interface MissionEvent {
+  id: string;
+  missionId: string;
+  actorId: MissionEventActor | string;
+  eventType: MissionEventType;
+  targetType: EventTargetType;
+  targetId?: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  clientCreatedAt?: string | null;
+  source: EventSource;
+  idempotencyKey?: string | null;
+}
+
+export interface MissionEventsQueryOptions {
+  page?: number;
+  limit?: number;
+  eventType?: MissionEventType;
+}
+
+export interface MissionEventsData {
+  events: MissionEvent[];
+  pagination: PaginationMeta;
+}
+
+export interface MissionEventCreatedPayload {
+  missionId: string;
+  event: MissionEvent;
+}
+
