@@ -2,15 +2,45 @@ import React from 'react';
 import { Wifi, WifiOff, RefreshCw, Radio } from 'lucide-react';
 import { useConnectivityStore } from '../../store/connectivityStore';
 
+import { useSyncStore } from '../../store/syncStore';
+import { AlertTriangle } from 'lucide-react';
+
 export const ConnectivityIndicator: React.FC = () => {
   const { status, networkAvailable, serverReachable, realtimeConnected, latencyMs, checkServerHealth } =
     useConnectivityStore();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
+  const conflicts = useSyncStore((s) => s.conflicts);
 
   const getStatusConfig = () => {
+    // 1. Conflict priority
+    if (conflicts.length > 0) {
+      return {
+        label: `CONFLICT (${conflicts.length})`,
+        dotColor: 'bg-rose-500 animate-pulse shadow-[0_0_8px_#F43F5E]',
+        textColor: 'text-rose-400',
+        borderColor: 'border-rose-800/60',
+        bgColor: 'bg-rose-950/30',
+        icon: AlertTriangle,
+      };
+    }
+
+    // 2. Syncing in progress
+    if (isSyncing) {
+      return {
+        label: 'SYNCING',
+        dotColor: 'bg-cyan-400 animate-ping shadow-[0_0_8px_#22D3EE]',
+        textColor: 'text-cyan-400',
+        borderColor: 'border-cyan-800/60',
+        bgColor: 'bg-cyan-950/30',
+        icon: RefreshCw,
+      };
+    }
+
+    // 3. Regular connectivity states
     switch (status) {
       case 'ONLINE':
         return {
-          label: 'ONLINE',
+          label: 'LIVE',
           dotColor: 'bg-blackbox-success shadow-[0_0_8px_#10B981]',
           textColor: 'text-blackbox-success',
           borderColor: 'border-emerald-900/50',
@@ -19,7 +49,7 @@ export const ConnectivityIndicator: React.FC = () => {
         };
       case 'RECONNECTING':
         return {
-          label: 'RECONNECTING',
+          label: 'DEGRADED',
           dotColor: 'bg-blackbox-warning animate-pulse shadow-[0_0_8px_#F59E0B]',
           textColor: 'text-blackbox-warning',
           borderColor: 'border-amber-900/50',
@@ -52,7 +82,7 @@ export const ConnectivityIndicator: React.FC = () => {
       >
         <span className={`w-2 h-2 rounded-full ${config.dotColor}`} />
         <Icon className={`w-3.5 h-3.5 ${config.textColor} ${status === 'RECONNECTING' ? 'animate-spin' : ''}`} />
-        <span className={`text-xs font-mono font-semibold tracking-wider ${config.textColor}`}>
+        <span className={`text-[11px] font-mono font-semibold tracking-[0.12em] ${config.textColor}`}>
           {config.label}
         </span>
 
@@ -64,8 +94,8 @@ export const ConnectivityIndicator: React.FC = () => {
         )}
 
         {/* Dropdown status hover card */}
-        <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-blackbox-surface border border-blackbox-border rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none">
-          <div className="text-[11px] font-mono text-blackbox-textSecondary uppercase tracking-wider mb-2 font-semibold flex items-center justify-between">
+        <div className="absolute right-0 top-full mt-3 w-72 rounded-xl border border-blackbox-border bg-blackbox-elevated p-4 shadow-blackbox-panel opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none">
+          <div className="mb-3 flex items-center justify-between text-[10px] font-mono font-semibold uppercase tracking-[0.14em] text-blackbox-textSecondary">
             <span>Link Telemetry</span>
             <Radio className="w-3 h-3 text-blackbox-cyan" />
           </div>
@@ -108,6 +138,8 @@ export const OfflineBanner: React.FC = () => {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={`w-full py-1.5 px-4 text-xs font-mono flex items-center justify-between border-b transition-colors duration-300 ${
         status === 'OFFLINE'
           ? 'bg-rose-950/40 border-rose-900/60 text-rose-300'

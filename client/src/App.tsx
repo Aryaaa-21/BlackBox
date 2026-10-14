@@ -5,6 +5,10 @@ import { useAuthStore } from './store/authStore';
 import { useOfflineStore } from './offline/offlineStore';
 import { useConnectivityWatcher } from './hooks/useConnectivityWatcher';
 
+import { DemoControls } from './components/Demo/DemoControls';
+
+const isDemoEnabled = import.meta.env.VITE_ENABLE_DEMO_MODE !== 'false';
+
 const AppInner: React.FC = () => {
   const { initializeAuth } = useAuthStore();
   const initializeOffline = useOfflineStore((s) => s.initialize);
@@ -19,7 +23,12 @@ const AppInner: React.FC = () => {
     initializeOffline();
   }, [initializeAuth, initializeOffline]);
 
-  return <AppRoutes />;
+  return (
+    <>
+      <AppRoutes />
+      {isDemoEnabled && <DemoControls />}
+    </>
+  );
 };
 
 export const App: React.FC = () => {

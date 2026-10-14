@@ -3,6 +3,7 @@ import { missionController } from '../controllers/mission.controller';
 import { missionMemberController } from '../controllers/missionMember.controller';
 import { taskController } from '../controllers/task.controller';
 import { missionEventController } from '../controllers/missionEvent.controller';
+import { replayController } from '../controllers/replay.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/role.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
@@ -117,6 +118,15 @@ router.get('/:missionId/events', (req, res, next) =>
 // Get Single Event Detail by ID
 router.get('/:missionId/events/:eventId', (req, res, next) =>
   missionEventController.getEventById(req, res, next)
+);
+
+// ==========================================
+// MISSION REPLAY ROUTES (Phase 8)
+// ==========================================
+
+// Get Mission Replay stream and summary (Commander & Active Members)
+router.get('/:missionId/replay', (req, res, next) =>
+  replayController.getMissionReplay(req, res, next)
 );
 
 export default router;

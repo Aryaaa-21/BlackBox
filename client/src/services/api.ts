@@ -13,9 +13,33 @@ export const api = axios.create({
   },
 });
 
+import { demoNetworkController } from './demoNetworkController';
+
 // Request interceptor to automatically attach JWT token from localStorage as fallback
+// and enforce simulated network failures during demo mode
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // If simulating offline or degraded, block regular API requests (except demo controls)
+    const isDemoEndpoint = config.url?.startsWith('/demo') || config.url?.includes('/demo/');
+    if (!isDemoEndpoint) {
+      if (demoNetworkController.isSimulatedOffline()) {
+        const networkError: ApiError = {
+          success: false,
+          message: 'Network unavailable (Simulated Offline Mode)',
+          code: 'NETWORK_UNAVAILABLE',
+        };
+        return Promise.reject(networkError);
+      }
+      if (demoNetworkController.isSimulatedDegraded()) {
+        const degradedError: ApiError = {
+          success: false,
+          message: 'Server unreachable (Simulated Degraded Network)',
+          code: 'NETWORK_UNAVAILABLE',
+        };
+        return Promise.reject(degradedError);
+      }
+    }
+
     const token = localStorage.getItem('blackbox_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;

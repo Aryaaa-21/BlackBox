@@ -9,6 +9,7 @@ import supertest from 'supertest';
 import { User } from '../models/User';
 import { Mission } from '../models/Mission';
 import { MissionEvent } from '../models/MissionEvent';
+import mongoose from 'mongoose';
 import { missionEventService } from '../services/missionEvent.service';
 import { MissionEventType, EventTargetType, EventSource } from '../types';
 
@@ -1194,6 +1195,120 @@ async function runTests() {
 
     roomSocketA.disconnect();
     roomSocketB.disconnect();
+
+    // ============================================================
+    // PHASE 8: MISSION REPLAY TESTS
+    // ============================================================
+    console.log('\n--- PHASE 8: MISSION REPLAY TESTS ---');
+
+    // 1. Authorized Commander can access mission replay
+    const replayRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/replay`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+
+    assert(replayRes.status === 200, 'GET /missions/:id/replay returns 200 for authorized commander');
+    assert(replayRes.body.success === true, 'Replay response has success: true');
+    assert(replayRes.body.data.mission.id === drillMissionId, 'Replay includes correct mission metadata');
+    assert(Array.isArray(replayRes.body.data.events), 'Replay includes events array');
+    assert(replayRes.body.data.events.length > 0, 'Replay returns non-empty event stream for active mission');
+
+    // 2. Events are in strict chronological order (createdAt ASC)
+    const replayEvents = replayRes.body.data.events;
+    let isReplayChronological = true;
+    for (let i = 0; i < replayEvents.length - 1; i++) {
+      if (new Date(replayEvents[i].createdAt).getTime() > new Date(replayEvents[i + 1].createdAt).getTime()) {
+        isReplayChronological = false;
+        break;
+      }
+    }
+    assert(isReplayChronological, 'Replay events are sorted in strict chronological ascending order');
+
+    // 3. Actors are properly resolved without exposing sensitive fields
+    const firstReplayEvent = replayEvents[0];
+    assert(firstReplayEvent.actor && firstReplayEvent.actor.name, 'Replay event actor is populated with human-readable name');
+    assert(!firstReplayEvent.actor.password && !firstReplayEvent.actor.passwordHash, 'Replay actor does NOT expose sensitive credentials');
+
+    // 4. Verifiable Summary is accurately calculated from real events
+    const summary = replayRes.body.data.summary;
+    assert(summary.totalEvents === replayEvents.length, 'Replay summary totalEvents matches event count');
+    assert(summary.tasksCreated > 0, 'Replay summary correctly counts tasks created from real events');
+    assert(typeof summary.durationFormatted === 'string', 'Replay summary provides human-formatted duration');
+
+    // 5. Authorized Active Member can also access replay
+    const memberReplayRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/replay`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    assert(memberReplayRes.status === 200, 'GET /missions/:id/replay returns 200 for authorized active mission member');
+
+    // 6. Unauthorized user (Commander B who is not creator/member of drillMission) receives 403
+    const unauthorizedReplayRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/replay`)
+      .set('Authorization', `Bearer ${commanderBToken}`);
+    assert(unauthorizedReplayRes.status === 403, 'GET /missions/:id/replay returns 403 for unauthorized user');
+
+    // 7. Non-existent mission returns 404
+    const fakeMissionId = new mongoose.Types.ObjectId().toString();
+    const notFoundReplayRes = await request
+      .get(`/api/v1/missions/${fakeMissionId}/replay`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(notFoundReplayRes.status === 404, 'GET /missions/:id/replay returns 404 for non-existent mission');
+
+    // 8. Event filtering by eventType in replay
+    const taskOnlyReplayRes = await request
+      .get(`/api/v1/missions/${drillMissionId}/replay?eventType=TASK_CREATED`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(taskOnlyReplayRes.status === 200, 'Replay query filter by eventType returns 200');
+    const allTaskCreated = taskOnlyReplayRes.body.data.events.every((e: { eventType: string }) => e.eventType === 'TASK_CREATED');
+    assert(allTaskCreated, 'Filtered replay contains only requested eventType');
+
+    // --- PHASE 9: DEMO MODE & RELIABILITY TESTS ---
+    console.log('\n--- STARTING BLACKBOX PHASE 9 DEMO MODE TESTS ---\n');
+
+    // 1. GET /demo/info returns demo status and pre-configured user credentials
+    const demoInfoRes = await request.get('/api/v1/demo/info');
+    assert(demoInfoRes.status === 200, 'GET /demo/info returns 200 OK');
+    assert(demoInfoRes.body.success === true, 'GET /demo/info returns success: true');
+    assert(demoInfoRes.body.data.enabled === true, 'GET /demo/info confirms demo mode is enabled');
+    assert(demoInfoRes.body.data.demoUsers.length === 4, 'GET /demo/info lists 4 demo users');
+
+    // 2. POST /demo/reset resets database and creates standard demo mission
+    const demoResetRes = await request.post('/api/v1/demo/reset');
+    assert(demoResetRes.status === 200, 'POST /demo/reset returns 200 OK');
+    assert(demoResetRes.body.success === true, 'POST /demo/reset returns success: true');
+    assert(demoResetRes.body.data.demoMission.title === 'Campus Emergency Operations', 'Demo mission is "Campus Emergency Operations"');
+    assert(demoResetRes.body.data.tasksCount === 5, 'Demo mission initializes with exactly 5 realistic tasks');
+    assert(demoResetRes.body.data.eventsCount >= 14, 'Demo mission initializes with historical MissionEvents for replay');
+    assert(!!demoResetRes.body.data.primaryToken, 'Demo reset returns commander authentication token');
+
+    const demoCommanderToken = demoResetRes.body.data.primaryToken;
+    const demoMissionId = demoResetRes.body.data.demoMission.id;
+
+    // 3. Authorized commander can read demo mission replay
+    const demoReplayRes = await request
+      .get(`/api/v1/missions/${demoMissionId}/replay`)
+      .set('Authorization', `Bearer ${demoCommanderToken}`);
+    assert(demoReplayRes.status === 200, 'Demo mission replay is immediately readable via commander token');
+    assert(demoReplayRes.body.data.events.length >= 14, 'Demo replay returns historical seeded events');
+
+    // 4. POST /demo/trigger-conflict updates server task behind the scenes
+    const conflictRes = await request
+      .post('/api/v1/demo/trigger-conflict')
+      .send({ missionId: demoMissionId });
+    assert(conflictRes.status === 200, 'POST /demo/trigger-conflict returns 200 OK');
+    assert(conflictRes.body.success === true, 'Conflict trigger returns success: true');
+    assert(conflictRes.body.data.newServerStatus === 'BLOCKED', 'Conflict trigger sets server status to BLOCKED');
+
+    // 5. Verify task is actually updated in MongoDB and recorded as TASK_BLOCKED event
+    const demoReplayAfterConflict = await request
+      .get(`/api/v1/missions/${demoMissionId}/replay`)
+      .set('Authorization', `Bearer ${demoCommanderToken}`);
+    const lastEvent = demoReplayAfterConflict.body.data.events[demoReplayAfterConflict.body.data.events.length - 1];
+    assert(lastEvent.eventType === 'TASK_BLOCKED', 'Simulated conflict created genuine TASK_BLOCKED event in mission history');
+
+    // 6. Idempotent secondary reset cleans up and leaves a pristine demo state
+    const demoSecondReset = await request.post('/api/v1/demo/reset');
+    assert(demoSecondReset.status === 200, 'Subsequent POST /demo/reset succeeds idempotently');
+    assert(demoSecondReset.body.data.tasksCount === 5, 'Subsequent reset maintains exactly 5 tasks without duplicates');
 
     // Clean up
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

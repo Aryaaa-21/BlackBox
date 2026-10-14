@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Lock,
   User,
   Radio,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useMissionStore } from '../store/missionStore';
@@ -29,12 +30,16 @@ import { TaskList } from '../components/Tasks/TaskList';
 import { MissionActivityFeed } from '../components/Events/MissionActivityFeed';
 import { ConnectionStatusIndicator } from '../components/Events/ConnectionStatusIndicator';
 import { OfflineBanner } from '../components/Offline/OfflineBanner';
-import { PendingMutationsPanel } from '../components/Offline/PendingMutationsPanel';
+import { SyncStatusPanel } from '../components/Sync/SyncStatusPanel';
+import { PendingChangesPanel } from '../components/Sync/PendingChangesPanel';
+import { ConflictDialog } from '../components/Sync/ConflictDialog';
 import { socketService } from '../services/socket';
 import { Mission, MissionSeverity, MissionMember, Task, MissionEventCreatedPayload } from '../types';
 import { useOfflineStore } from '../offline/offlineStore';
 import { missionRepository } from '../offline/mission.repository';
 import { taskRepository } from '../offline/task.repository';
+import { useSyncStore, SyncConflict } from '../store/syncStore';
+import { syncConflict } from '../services/sync/syncConflict';
 
 export const MissionDetailPage: React.FC = () => {
   // Phase 6: offline store
@@ -126,6 +131,38 @@ export const MissionDetailPage: React.FC = () => {
     severity: 'MEDIUM',
   });
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Phase 7: Sync store and conflict UI state
+  const { conflicts } = useSyncStore();
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [activeConflict, setActiveConflict] = useState<SyncConflict | null>(null);
+
+  // Phase 7: Load conflicts for this mission when online
+  useEffect(() => {
+    if (!missionId || offlineMode !== 'ONLINE') return;
+    syncConflict.loadMissionConflicts(missionId).catch(() => {});
+  }, [missionId, offlineMode]);
+
+  // Phase 7: Show conflict dialog when conflicts exist
+  useEffect(() => {
+    if (conflicts.length > 0 && !activeConflict) {
+      setActiveConflict(conflicts[0]);
+      setShowConflictDialog(true);
+    }
+  }, [conflicts, activeConflict]);
+
+  const handleConflictResolved = useCallback((conflictId: string) => {
+    setShowConflictDialog(false);
+    setActiveConflict(null);
+    // If more conflicts, show the next one after a brief pause
+    const remaining = conflicts.filter((c) => c.id !== conflictId);
+    if (remaining.length > 0) {
+      setTimeout(() => {
+        setActiveConflict(remaining[0]);
+        setShowConflictDialog(true);
+      }, 600);
+    }
+  }, [conflicts]);
 
   // Load mission, members, tasks, and join Socket room (Section 62 & 108)
   useEffect(() => {
@@ -442,12 +479,30 @@ export const MissionDetailPage: React.FC = () => {
 
         {/* Live Channel Status & Indicator */}
         <div className="flex items-center gap-3">
+          <SyncStatusPanel
+            compact
+            missionId={missionId}
+            onViewConflicts={() => {
+              if (conflicts.length > 0) {
+                setActiveConflict(conflicts[0]);
+                setShowConflictDialog(true);
+              }
+            }}
+          />
           <ConnectionStatusIndicator />
           <div className="hidden sm:flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted">
             <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
             <span>Channel:</span>
             <span className="text-blackbox-text font-bold">mission:{selectedMission.id.substring(0, 6)}</span>
           </div>
+          <Link
+            to={`/missions/${selectedMission.id}/replay`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-800/60 text-xs font-mono text-cyan-300 transition-colors shadow-sm"
+            title="Open Historical Mission Replay"
+          >
+            <History className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Replay</span>
+          </Link>
         </div>
       </div>
 
@@ -522,15 +577,39 @@ export const MissionDetailPage: React.FC = () => {
                   <span>Lifecycle Finalized ({selectedMission.status})</span>
                 </div>
               )}
+
+              {/* Phase 8/9: Mission Replay Entry */}
+              <Link
+                to={`/missions/${selectedMission.id}/replay`}
+                className={`px-3.5 py-2 rounded-lg font-mono text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  selectedMission.status === 'COMPLETED'
+                    ? 'bg-cyan-500 hover:bg-cyan-400 text-black border border-cyan-400 shadow-[0_0_14px_rgba(0,210,255,0.35)]'
+                    : 'bg-blackbox-panel hover:bg-zinc-800 border border-blackbox-border hover:border-cyan-500/50 text-cyan-400'
+                }`}
+                title="Inspect chronological event history and replay mission timeline"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>View Replay</span>
+              </Link>
             </div>
           ) : (
-            <div className="text-xs font-mono text-blackbox-muted flex items-center gap-1.5 bg-blackbox-panel px-3 py-1.5 rounded-lg border border-blackbox-border">
-              <Lock className="w-3.5 h-3.5" />
-              <span>
-                {isCommander
-                  ? 'Controlled by Creator Unit'
-                  : 'Field Operator (Read-Only Clearance)'}
-              </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="text-xs font-mono text-blackbox-muted flex items-center gap-1.5 bg-blackbox-panel px-3 py-1.5 rounded-lg border border-blackbox-border">
+                <Lock className="w-3.5 h-3.5" />
+                <span>
+                  {isCommander
+                    ? 'Controlled by Creator Unit'
+                    : 'Field Operator (Active Roster)'}
+                </span>
+              </div>
+              <Link
+                to={`/missions/${selectedMission.id}/replay`}
+                className="px-3.5 py-2 rounded-lg bg-blackbox-panel hover:bg-zinc-800 border border-blackbox-border hover:border-cyan-500/50 text-cyan-400 font-mono text-xs font-bold flex items-center gap-1.5 transition-all"
+                title="Inspect chronological event history and replay mission timeline"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>View Replay</span>
+              </Link>
             </div>
           )}
         </div>
@@ -621,9 +700,9 @@ export const MissionDetailPage: React.FC = () => {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          {/* Phase 6: Pending mutations panel — shown when offline and changes are queued */}
+          {/* Phase 7: Pending changes queue with sync progression & retry */}
           {missionId && (
-            <PendingMutationsPanel missionId={missionId} />
+            <PendingChangesPanel missionId={missionId} />
           )}
 
           <TaskList
@@ -821,6 +900,18 @@ export const MissionDetailPage: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Phase 7: Conflict Resolution Dialog */}
+      {showConflictDialog && activeConflict && (
+        <ConflictDialog
+          conflict={activeConflict}
+          onResolved={handleConflictResolved}
+          onDismiss={() => {
+            setShowConflictDialog(false);
+            setActiveConflict(null);
+          }}
+        />
       )}
     </div>
   );

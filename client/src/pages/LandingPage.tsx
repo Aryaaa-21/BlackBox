@@ -1,16 +1,50 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Shield, ArrowRight, Radio } from 'lucide-react';
+/**
+ * Phase 9 — Product Polish & Hackathon Demo
+ * Landing Page — First impression operational overview.
+ * Immediate 30-second understanding of the BlackBox value proposition.
+ */
+
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Shield, ArrowRight, Radio, RefreshCw, Layers, History, Activity } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { ConnectivityIndicator } from '../components/Connectivity/ConnectivityIndicator';
+import { demoApi } from '../services/demoApi';
 
 export const LandingPage: React.FC = () => {
-  const { isAuthenticated, user } = useAuthStore();
+  const navigate = useNavigate();
+  const { isAuthenticated, user, login } = useAuthStore();
+  const [isLaunchingDemo, setIsLaunchingDemo] = useState(false);
+
+  const handleLaunchDemo = async () => {
+    setIsLaunchingDemo(true);
+    try {
+      const res = await demoApi.resetDemo();
+      const commanderCreds = res.demoUsers.find((u) => u.role === 'COMMANDER');
+      if (commanderCreds) {
+        await login(commanderCreds.email, commanderCreds.password);
+      }
+      if (res.demoMission?.id) {
+        navigate(`/missions/${res.demoMission.id}`);
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      console.error('Failed to launch demo from landing page:', err);
+      navigate('/login');
+    } finally {
+      setIsLaunchingDemo(false);
+    }
+  };
+
+  const scrollToHowItWorks = () => {
+    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   return (
-    <div className="min-h-screen bg-blackbox-bg text-blackbox-text flex flex-col justify-between selection:bg-blackbox-cyan selection:text-black">
+    <div className="min-h-screen bg-blackbox-bg text-blackbox-text ops-grid selection:bg-blackbox-cyan selection:text-black">
       {/* Header */}
-      <header className="border-b border-blackbox-border/80 px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-blackbox-border/80 bg-blackbox-surface/80 px-6 py-4 backdrop-blur-xl flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded bg-blackbox-panel border border-blackbox-cyan/40 flex items-center justify-center shadow-[0_0_12px_rgba(0,210,255,0.25)]">
             <Shield className="w-5 h-5 text-blackbox-cyan" />
@@ -28,9 +62,9 @@ export const LandingPage: React.FC = () => {
           {isAuthenticated ? (
             <Link
               to="/dashboard"
-              className="px-4 py-2 rounded-lg bg-blackbox-cyan text-black font-mono text-xs font-bold hover:bg-cyan-300 transition-colors flex items-center gap-1.5"
+              className="px-4 py-2 rounded-lg bg-blackbox-cyan text-black font-mono text-xs font-bold hover:bg-cyan-300 transition-colors flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,210,255,0.25)]"
             >
-              <span>ENTER CONSOLE</span>
+              <span>ENTER OPERATIONS</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           ) : (
@@ -41,115 +75,122 @@ export const LandingPage: React.FC = () => {
               >
                 SIGN IN
               </Link>
-              <Link
-                to="/register"
-                className="px-3.5 py-1.5 rounded-lg bg-blackbox-panel hover:bg-blackbox-panel/80 border border-blackbox-cyan/40 text-blackbox-cyan font-mono text-xs font-semibold transition-colors"
+              <button
+                onClick={handleLaunchDemo}
+                disabled={isLaunchingDemo}
+                className="px-3.5 py-1.5 rounded-lg bg-blackbox-cyan text-black font-mono text-xs font-bold hover:bg-cyan-300 transition-colors flex items-center gap-1 shadow-[0_0_10px_rgba(0,210,255,0.3)]"
               >
-                REGISTER
-              </Link>
+                <span>{isLaunchingDemo ? 'PREPARING...' : 'LIVE DEMO'}</span>
+              </button>
             </div>
           )}
         </div>
       </header>
 
       {/* Hero Section */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 max-w-5xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-blackbox-border bg-blackbox-panel/60 text-xs font-mono text-blackbox-cyanMuted mb-6">
-          <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
-          <span>PHASE 1: TECHNICAL ARCHITECTURE & MERN FOUNDATION</span>
+      <main className="mx-auto flex min-h-[calc(100vh-148px)] max-w-6xl flex-col justify-center px-6 py-16">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-blackbox-cyan/25 bg-blackbox-cyan/10 px-3 py-1 text-[10px] font-mono font-semibold uppercase tracking-[0.16em] text-blackbox-cyan">
+          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span>MISSION-CRITICAL OFFLINE-FIRST OPERATIONS</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight font-mono text-blackbox-text max-w-3xl mb-6 leading-tight">
-          When the network fails, the operation continues.
+        <h1 className="mt-7 max-w-4xl text-4xl font-semibold leading-[1.08] tracking-tight text-blackbox-text sm:text-6xl">
+          The network can fail. <br />
+          <span className="text-blackbox-cyan">
+            The operation shouldn&apos;t.
+          </span>
         </h1>
 
-        <p className="text-sm sm:text-base text-blackbox-muted max-w-2xl mb-10 leading-relaxed">
-          BlackBox is an offline-first operations platform designed to keep command centers and field operators
-          coordinated when connectivity becomes intermittent, contested, or completely unavailable.
+        <p className="mt-7 max-w-2xl text-sm leading-7 text-blackbox-textSecondary sm:text-base">
+          Keep command centers and field operators coordinated when connectivity disappears.
+          Execute tasks locally in IndexedDB, queue mutations offline, reconcile conflicts explicitly,
+          and replay missions chronologically.
         </p>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
+        {/* Primary Action Buttons */}
+        <div className="mt-10 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
           {isAuthenticated ? (
             <Link
               to="/dashboard"
-              className="w-full sm:w-auto px-6 py-3 rounded-lg bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,210,255,0.3)]"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,210,255,0.35)]"
             >
-              <span>ACCESS COMMAND CONSOLE</span>
+              <span>ENTER OPERATIONS</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           ) : (
             <>
-              <Link
-                to="/register"
-                className="w-full sm:w-auto px-6 py-3 rounded-lg bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,210,255,0.3)]"
+              <button
+                onClick={handleLaunchDemo}
+                disabled={isLaunchingDemo}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,210,255,0.35)]"
               >
-                <span>GET STARTED // REGISTER OPERATOR</span>
+                <span>{isLaunchingDemo ? 'INITIALIZING DEMO...' : 'ENTER OPERATIONS (DEMO)'}</span>
                 <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link
-                to="/login"
-                className="w-full sm:w-auto px-6 py-3 rounded-lg bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border text-blackbox-text font-mono text-sm font-medium transition-colors"
+              </button>
+              <button
+                type="button"
+                onClick={scrollToHowItWorks}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-mono text-sm font-medium transition-colors"
               >
-                EXISTING OPERATOR SIGN IN
-              </Link>
+                SEE HOW IT WORKS
+              </button>
             </>
           )}
         </div>
 
         {/* 4 Pillars of Resilient Ops */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full text-left">
-          <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border">
-            <div className="text-blackbox-cyan font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blackbox-cyan" />
-              01 // ONLINE
+        <div id="how-it-works" className="mt-16 grid w-full grid-cols-1 gap-3 text-left sm:grid-cols-2 lg:grid-cols-4">
+          <div className="ops-surface p-5 transition-colors hover:border-blackbox-cyan/35">
+            <div className="text-cyan-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5" />
+              01 // LIVE COORD
             </div>
-            <p className="text-xs text-blackbox-textSecondary">
-              Real-time mission coordination, live telemetry, and instant bi-directional command updates via Socket.IO.
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Real-time situational awareness, team dispatching, and bidirectional updates via Socket.IO rooms.
             </p>
           </div>
 
-          <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border">
-            <div className="text-blackbox-critical font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blackbox-critical" />
-              02 // OFFLINE
+          <div className="ops-surface p-5 transition-colors hover:border-blackbox-critical/35">
+            <div className="text-rose-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5" />
+              02 // OFFLINE CACHE
             </div>
-            <p className="text-xs text-blackbox-textSecondary">
-              Zero interruptions. The operator remains inside the workflow. Critical actions execute locally and queue safely.
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Zero workflow lockouts. Local IndexedDB storage and client-side state machine validate and queue mutations.
             </p>
           </div>
 
-          <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border">
-            <div className="text-blackbox-warning font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blackbox-warning" />
-              03 // RECONNECT
+          <div className="ops-surface p-5 transition-colors hover:border-blackbox-warning/35">
+            <div className="text-amber-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5" />
+              03 // SYNC & CONFLICT
             </div>
-            <p className="text-xs text-blackbox-textSecondary">
-              Transparent synchronization. Pending mutations are dispatched with deterministic conflict resolution.
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Automatic push sync upon reconnection. Server divergence triggers visible side-by-side conflict resolution.
             </p>
           </div>
 
-          <div className="p-5 rounded-xl bg-blackbox-surface border border-blackbox-border">
+          <div className="ops-surface p-5 transition-colors hover:border-blackbox-success/35">
             <div className="text-emerald-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              04 // REPLAY
+              <History className="w-3.5 h-3.5" />
+              04 // MISSION REPLAY
             </div>
-            <p className="text-xs text-blackbox-textSecondary">
-              Append-only event audit logs permit complete chronological mission reconstruction and forensic analysis.
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Forensic timeline playback. Reconstruct exact historical field states from immutable MissionEvents.
             </p>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-blackbox-border/80 px-6 py-4 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-blackbox-muted gap-2">
+      <footer className="border-t border-blackbox-border/80 bg-blackbox-surface/70 px-6 py-4 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-blackbox-muted gap-2">
         <div className="flex items-center gap-2">
-          <span>BLACKBOX v1.0.0-PHASE1</span>
+          <span className="text-slate-400 font-bold">BLACKBOX</span>
           <span>•</span>
-          <span>MERN STACK ARCHITECTURE</span>
+          <span>OFFLINE-FIRST OPERATIONS PLATFORM</span>
         </div>
-        <div>
-          {isAuthenticated ? `ACTIVE SESSION: ${user?.name} (${user?.role})` : 'NO ACTIVE SESSION'}
+        <div className="text-slate-500">
+          {isAuthenticated ? `SESSION: ${user?.name} (${user?.role})` : 'OPERATIONAL STANDBY'}
         </div>
       </footer>
     </div>

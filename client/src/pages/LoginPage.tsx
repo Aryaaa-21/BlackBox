@@ -37,7 +37,7 @@ export const LoginPage: React.FC = () => {
   const activeError = localError || error;
 
   return (
-    <div className="min-h-screen bg-blackbox-bg flex flex-col justify-between p-6">
+    <div className="min-h-screen bg-blackbox-bg ops-grid flex flex-col justify-between p-6">
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2.5">
@@ -50,12 +50,12 @@ export const LoginPage: React.FC = () => {
       </div>
 
       {/* Login Card */}
-      <div className="w-full max-w-md mx-auto my-12 bg-blackbox-surface border border-blackbox-border rounded-xl p-8 shadow-2xl">
+      <div className="ops-surface mx-auto my-12 w-full max-w-md p-8">
         <div className="mb-6">
           <div className="text-[11px] font-mono text-blackbox-cyan uppercase tracking-wider mb-1 font-semibold">
             SECURE ACCESS // AUTH
           </div>
-          <h2 className="text-xl font-bold font-mono text-blackbox-text">Sign In to Console</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-blackbox-text">Sign in to console</h2>
           <p className="text-xs text-blackbox-muted mt-1">
             Authenticate to access live telemetry and mission operations.
           </p>
@@ -81,7 +81,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="commander@blackbox.local"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
+                className="w-full rounded-lg border border-blackbox-border bg-blackbox-panel py-2.5 pl-9 pr-3 text-sm text-blackbox-text placeholder:text-blackbox-muted focus:border-blackbox-cyan focus:outline-none"
               />
             </div>
           </div>
@@ -98,7 +98,7 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
+                className="w-full rounded-lg border border-blackbox-border bg-blackbox-panel py-2.5 pl-9 pr-3 text-sm text-blackbox-text placeholder:text-blackbox-muted focus:border-blackbox-cyan focus:outline-none"
               />
             </div>
           </div>
@@ -106,7 +106,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-2.5 px-4 rounded-lg bg-blackbox-cyan hover:bg-cyan-300 text-black font-mono text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-blackbox-cyan px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-cyan-300 disabled:opacity-50"
           >
             {isLoading ? (
               <>

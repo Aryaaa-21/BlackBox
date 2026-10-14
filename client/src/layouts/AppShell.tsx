@@ -12,7 +12,7 @@ export const AppShell: React.FC = () => {
   useConnectivity();
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-blackbox-bg">
+    <div className="flex h-screen w-screen overflow-hidden bg-blackbox-bg ops-grid">
       {/* Sidebar Navigation */}
       <Sidebar
         isMobileOpen={isMobileMenuOpen}
@@ -28,8 +28,8 @@ export const AppShell: React.FC = () => {
         <OfflineBanner />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-blackbox-bg">
-          <div className="max-w-7xl mx-auto h-full">
+        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          <div className="mx-auto h-full max-w-[1480px]">
             <Outlet />
           </div>
         </main>

@@ -100,6 +100,7 @@ const missionEventSchema = new Schema<IMissionEventDocument>(
 
 // Compound indexes for optimal performance and idempotency protection (Sections 12 & 21)
 missionEventSchema.index({ missionId: 1, createdAt: -1 });
+missionEventSchema.index({ missionId: 1, createdAt: 1, _id: 1 });
 missionEventSchema.index({ missionId: 1, eventType: 1 });
 missionEventSchema.index({ missionId: 1, actorId: 1 });
 missionEventSchema.index(

@@ -69,20 +69,31 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
   return (
     <div
-      className={`p-4 rounded-xl border transition-all ${
+      className={`rounded-blackbox border p-4 transition-all ${
         task.status === 'ACTIVE'
-          ? 'bg-blackbox-panel/90 border-cyan-900/60 shadow-[0_0_12px_rgba(6,182,212,0.08)]'
+          ? 'bg-blackbox-panel border-blackbox-cyan/35 shadow-[0_0_18px_rgba(98,216,232,0.07)]'
           : task.status === 'BLOCKED'
-          ? 'bg-blackbox-panel/80 border-amber-900/60 shadow-[0_0_12px_rgba(245,158,11,0.08)]'
+          ? 'bg-blackbox-panel border-blackbox-warning/35 shadow-[0_0_18px_rgba(231,183,102,0.06)]'
           : task.status === 'COMPLETED'
-          ? 'bg-blackbox-surface/80 border-blackbox-border opacity-85'
-          : 'bg-blackbox-panel/50 border-blackbox-border hover:border-zinc-700'
+          ? 'bg-blackbox-surface/80 border-blackbox-border opacity-80'
+          : 'bg-blackbox-panel/65 border-blackbox-border hover:border-blackbox-borderLight'
       }`}
     >
       <div className="flex items-start justify-between gap-3 mb-2.5">
         <div className="flex items-center gap-2 flex-wrap">
           <TaskPriorityBadge priority={task.priority} />
           <TaskStatusBadge status={task.status} />
+          {(task as any).syncState === 'PENDING' && (
+            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/80 border border-amber-600/60 px-2 py-0.5 rounded flex items-center gap-1 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              PENDING SYNC
+            </span>
+          )}
+          {(task as any).syncState === 'SYNCED' && (
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/50 px-2 py-0.5 rounded">
+              SYNCED
+            </span>
+          )}
           {isAssignedToMe && (
             <span className="text-[10px] font-mono font-bold text-blackbox-cyan bg-cyan-950/80 border border-cyan-800 px-2 py-0.5 rounded">
               MY TASK

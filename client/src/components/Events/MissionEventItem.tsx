@@ -48,6 +48,12 @@ export const MissionEventItem: React.FC<MissionEventItemProps> = ({ event }) => 
             >
               {formatted.action}
             </span>
+            {((event as any).syncState === 'PENDING' || (event as any).source === 'LOCAL' || (event as any).isLocal) && (
+              <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/80 border border-amber-600/50 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
+                <span className="w-1 h-1 rounded-full bg-amber-400" />
+                Pending Sync
+              </span>
+            )}
           </div>
           <time
             dateTime={formatted.isoTime}

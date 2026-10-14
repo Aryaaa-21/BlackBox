@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Compass, Settings, Shield, User as UserIcon, X } from 'lucide-react';
+import { Activity, Compass, LayoutDashboard, Settings, Shield, User as UserIcon, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 
@@ -14,85 +14,74 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
   const { sidebarCollapsed } = useAppStore();
 
   const navItems = [
-    { name: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    { name: 'Missions', to: '/missions', icon: Compass },
-    { name: 'Settings', to: '/settings', icon: Settings },
+    { name: 'Dashboard', detail: 'Operational overview', to: '/dashboard', icon: LayoutDashboard },
+    { name: 'Missions', detail: 'Mission directory', to: '/missions', icon: Compass },
+    { name: 'Activity', detail: 'Event history', to: '/missions', icon: Activity },
+    { name: 'Settings', detail: 'Account controls', to: '/settings', icon: Settings },
   ];
 
   const content = (
-    <aside
-      className={`h-full flex flex-col justify-between bg-blackbox-surface border-r border-blackbox-border transition-all duration-300 z-40 ${
-        sidebarCollapsed ? 'w-16' : 'w-64'
-      }`}
-    >
+    <aside className={`flex h-full flex-col border-r border-blackbox-border bg-blackbox-surface/95 transition-all duration-300 z-40 ${sidebarCollapsed ? 'w-[76px]' : 'w-[264px]'}`}>
       <div>
-        {/* Logo / Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-blackbox-border">
+        <div className="flex h-[76px] items-center justify-between border-b border-blackbox-border px-4">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-8 h-8 rounded bg-blackbox-panel border border-blackbox-cyan/40 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(0,210,255,0.2)]">
-              <Shield className="w-4 h-4 text-blackbox-cyan" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blackbox-cyan/35 bg-blackbox-panel text-blackbox-cyan shadow-[0_0_18px_rgba(98,216,232,0.12)]">
+              <Shield className="h-[18px] w-[18px]" />
             </div>
             {!sidebarCollapsed && (
-              <div className="flex flex-col">
-                <span className="font-mono font-bold tracking-wider text-sm text-blackbox-text">BLACKBOX</span>
-                <span className="text-[10px] font-mono text-blackbox-cyanMuted tracking-tight uppercase">Resilient Ops</span>
+              <div className="min-w-0">
+                <div className="font-mono text-sm font-bold tracking-[0.22em] text-blackbox-text">BLACKBOX</div>
+                <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blackbox-muted">Resilient operations</div>
               </div>
             )}
           </div>
           {isMobileOpen && (
-            <button
-              onClick={onMobileClose}
-              className="lg:hidden p-1.5 rounded-lg text-blackbox-muted hover:text-blackbox-text hover:bg-blackbox-panel"
-            >
-              <X className="w-5 h-5" />
+            <button onClick={onMobileClose} className="rounded-lg p-1.5 text-blackbox-muted hover:bg-blackbox-panel hover:text-blackbox-text lg:hidden" aria-label="Close navigation">
+              <X className="h-5 w-5" />
             </button>
           )}
         </div>
 
-        {/* Navigation Links */}
-        <nav className="p-3 space-y-1">
+        {!sidebarCollapsed && (
+          <div className="mx-4 mt-5 rounded-lg border border-blackbox-border bg-blackbox-panel/60 px-3 py-2.5">
+            <div className="ops-kicker">Mission control</div>
+            <div className="mt-1 text-xs leading-5 text-blackbox-textSecondary">Maintain continuity when the link goes down.</div>
+          </div>
+        )}
+
+        <nav className="space-y-1.5 p-4" aria-label="Primary navigation">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
-                key={item.to}
+                key={`${item.name}-${item.to}`}
                 to={item.to}
                 onClick={onMobileClose}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-blackbox-panel text-blackbox-cyan border border-blackbox-cyan/30'
-                      : 'text-blackbox-textSecondary hover:text-blackbox-text hover:bg-blackbox-panel/60 border border-transparent'
-                  } ${sidebarCollapsed ? 'justify-center' : ''}`
-                }
+                className={({ isActive }) => `group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${isActive ? 'border-blackbox-cyan/25 bg-blackbox-cyan/10 text-blackbox-cyan' : 'border-transparent text-blackbox-textSecondary hover:border-blackbox-border hover:bg-blackbox-panel hover:text-blackbox-text'} ${sidebarCollapsed ? 'justify-center' : ''}`}
                 title={sidebarCollapsed ? item.name : undefined}
               >
-                <Icon className="w-4 h-4 shrink-0" />
-                {!sidebarCollapsed && <span className="font-mono">{item.name}</span>}
+                <Icon className="h-[17px] w-[17px] shrink-0" />
+                {!sidebarCollapsed && (
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{item.name}</span>
+                    <span className="block truncate text-[10px] text-blackbox-muted group-hover:text-blackbox-textSecondary">{item.detail}</span>
+                  </span>
+                )}
               </NavLink>
             );
           })}
         </nav>
       </div>
 
-      {/* Operator Session Info Footer */}
-      <div className="p-3 border-t border-blackbox-border">
-        <div
-          className={`flex items-center gap-3 p-2 rounded-lg bg-blackbox-panel/50 border border-blackbox-border/80 ${
-            sidebarCollapsed ? 'justify-center' : ''
-          }`}
-        >
-          <div className="w-7 h-7 rounded-full bg-blackbox-surface border border-blackbox-border flex items-center justify-center shrink-0 text-blackbox-cyan">
-            <UserIcon className="w-3.5 h-3.5" />
+      <div className="mt-auto border-t border-blackbox-border p-4">
+        <div className={`flex items-center gap-3 rounded-xl border border-blackbox-border bg-blackbox-panel/70 p-2.5 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blackbox-border bg-blackbox-surface text-blackbox-cyan">
+            <UserIcon className="h-4 w-4" />
           </div>
           {!sidebarCollapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-mono font-medium text-blackbox-text truncate">
-                {user?.name || 'Operator'}
-              </span>
-              <span className="text-[10px] font-mono text-blackbox-muted uppercase tracking-wider">
-                {user?.role || 'FIELD_OPERATOR'}
-              </span>
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-blackbox-text">{user?.name || 'Operator'}</div>
+              <div className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-wider text-blackbox-muted">{user?.role || 'FIELD_OPERATOR'}</div>
             </div>
           )}
         </div>
@@ -102,25 +91,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
 
   return (
     <>
-      {/* Desktop view */}
-      <div className="hidden lg:block h-full">{content}</div>
-
-      {/* Mobile drawer backdrop */}
-      {isMobileOpen && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onMobileClose}
-        />
-      )}
-
-      {/* Mobile drawer */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 transform lg:hidden transition-transform duration-300 ease-in-out ${
-          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        {content}
-      </div>
+      <div className="hidden h-full lg:block">{content}</div>
+      {isMobileOpen && <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={onMobileClose} />}
+      <div className={`fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>{content}</div>
     </>
   );
 };

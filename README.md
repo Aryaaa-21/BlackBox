@@ -1,401 +1,199 @@
 # BLACKBOX — Resilient Operations Platform
 
-> **Offline-First Mission Coordination & Tactical Web Operations**  
-> *When the network fails, the operation continues.*
+> **Offline-First Mission Coordination & Tactical Operations**  
+> *"The network can fail. The operation shouldn't."*
 
 ---
 
 ## 1. Executive Summary & What BlackBox Is
 
-**BlackBox** is a high-reliability, offline-first operations platform engineered to keep distributed teams, command centers, and field personnel coordinated in environments where network connectivity is intermittent, degraded, or completely severed.
+**BlackBox** is a resilient, offline-first operational platform engineered to keep command centers and field operatives coordinated in environments where network connectivity is intermittent, degraded, or completely severed.
 
-Unlike standard CRUD web dashboards that fail or block users whenever an API request times out, BlackBox treats **OFFLINE as a first-class operational state**. Users remain inside the application, queue tactical actions locally, and synchronize deterministically once upstream connectivity is restored.
+Unlike traditional web applications that stall, show blocking spinners, or drop mutations when connectivity drops, BlackBox treats **OFFLINE as a first-class operational state**. Users remain inside the application, tasks continue to transition, operational logs are appended to local IndexedDB storage, mutations queue deterministically, and upon reconnection the Phase 7 synchronization engine resolves divergences with full forensic audit replay.
 
 ---
 
-## 2. Core Operational Concept
+## 2. Core Architecture & Operational Lifecycle
 
-The BlackBox architecture centers around four operational modes:
-
-| Phase | Operational Mode | Architectural Behavior |
-| :--- | :--- | :--- |
-| **01** | **ONLINE** | Full bidirectional coordination, live telemetry, and low-latency Socket.IO event streaming. |
-| **02** | **OFFLINE** | Zero modal interruptions. The operator continues local workflows; mutations are staged locally in high-integrity storage. |
-| **03** | **RECONNECT** | Staged mutations are dispatched to the server; conflicts are resolved deterministically; state reconciles. |
-| **04** | **REPLAY** | Chronological event logs allow mission reconstruction, timeline scrubber reviews, and post-mission debriefing. |
+```
+ONLINE (Socket.IO Stream)
+   │
+   ▼ [Network Severed / Simulated Offline]
+OFFLINE OPERATIONS (IndexedDB Cache + Client State Machine)
+   │  • Tasks execute locally
+   │  • Local MissionEvents appended
+   │  • Mutation Queue records pending actions
+   │
+   ▼ [Network Restored]
+PUSH SYNCHRONIZATION (Phase 7 Sync Engine)
+   │  • Batches queued mutations to /api/v1/sync/push
+   │  • Server validates against MongoDB & emits live room broadcasts
+   │  • Detects upstream conflicts (e.g., remote server override)
+   │
+   ▼ [Conflict Detected]
+EXPLICIT CONFLICT RESOLUTION
+   │  • Side-by-side visual diff (Local Offline vs. Server State)
+   │  • Operator selects "Keep My Change" or "Keep Server"
+   │
+   ▼
+FORENSIC MISSION REPLAY
+      • Reconstructs exact second-by-second historical operational state
+```
 
 ---
 
 ## 3. Technology Stack
 
 ### Frontend
-- **Framework & Tooling:** React 18, TypeScript, Vite
-- **Routing:** React Router v6
-- **Styling:** Vanilla Tailwind CSS with custom BlackBox dark monochromatic operational design system
-- **State Management:** Zustand (lightweight, reactive, normalized stores)
-- **Networking:** Axios with global request/response interceptors & token injection
-- **Real-Time Stream:** Socket.IO Client
-- **Icons:** Lucide React
-- **PWA:** Vite PWA Plugin (`vite-plugin-pwa`) with offline service worker precaching and web manifest
+- **Framework & Language:** React 18, TypeScript, Vite
+- **Styling:** Vanilla Tailwind CSS with custom BlackBox dark cyber-tactical design system
+- **State Management:** Zustand (reactive, normalized stores for missions, tasks, team, replay, offline, and connectivity)
+- **Local Storage:** IndexedDB (via Dexie-compatible indexed database) for missions, tasks, members, events, and mutation queue
+- **Networking:** Axios with request/response interceptors & token injection
+- **Real-Time Stream:** Socket.IO Client (room-based dispatching)
+- **PWA:** Vite PWA Plugin (`vite-plugin-pwa`) with offline service worker precaching and manifest
 
 ### Backend
 - **Runtime:** Node.js (v20+ / v24)
 - **Server Framework:** Express.js + TypeScript
-- **Database ORM:** Mongoose (MongoDB 7+)
-- **Authentication:** JSON Web Tokens (JWT) + `bcryptjs` password hashing (salt rounds: 10)
-- **Validation:** Zod schemas
-- **Real-Time Communication:** Socket.IO Server
-- **Security:** Helmet (secure HTTP headers), CORS, sanitized error handlers
-- **Logging:** Morgan
+- **Database:** MongoDB (v7+) with Mongoose schemas
+- **Authentication:** JSON Web Tokens (JWT) + `bcryptjs` password hashing
+- **Validation:** Zod schemas for all request payloads
+- **Real-Time Engine:** Socket.IO Server with operational mission rooms
+- **Security:** Helmet, CORS, sanitized error handlers, and isolated demo endpoints
 
 ---
 
-## 4. Monorepo Architecture & Folder Structure
+## 4. Environment Variables
 
-BlackBox is structured as a clean, unified monorepo:
-
-```text
-blackbox/
-│
-├── client/                               # Frontend Web Application (React + Vite)
-│   ├── public/                           # Static assets, PWA icons, favicon
-│   ├── src/
-│   │   ├── assets/                       # UI assets and graphics
-│   │   ├── components/                   # Reusable UI components
-│   │   │   ├── AppShell/                 # Sidebar, Topbar, navigation
-│   │   │   ├── Common/                   # LoadingState, EmptyState, ErrorState
-│   │   │   └── Connectivity/             # ConnectivityIndicator, OfflineBanner
-│   │   ├── hooks/                        # Custom React hooks (useConnectivity)
-│   │   ├── layouts/                      # AppShell layout with responsive drawers
-│   │   ├── pages/                        # Landing, Login, Register, Dashboard, Missions, Settings, 404
-│   │   ├── routes/                       # AppRoutes, ProtectedRoute
-│   │   ├── services/                     # Axios API client, Socket.IO client
-│   │   ├── store/                        # Zustand stores (authStore, connectivityStore, appStore)
-│   │   ├── types/                        # Domain models, auth, and connectivity types
-│   │   ├── App.tsx                       # Root React component
-│   │   ├── index.css                     # Tailwind CSS and operational theme variables
-│   │   ├── main.tsx                      # DOM entrypoint
-│   │   └── vite-env.d.ts                 # Vite environment definitions
-│   ├── index.html                        # HTML5 shell
-│   ├── package.json                      # Frontend dependencies & scripts
-│   ├── postcss.config.js                 # PostCSS Tailwind processor
-│   ├── tailwind.config.js                # Custom BlackBox operational color tokens
-│   ├── tsconfig.json                     # TypeScript client configuration
-│   └── vite.config.ts                    # Vite bundler & PWA plugin setup
-│
-├── server/                               # Backend API & Real-Time Engine (Express + TS)
-│   ├── src/
-│   │   ├── config/                       # database.ts, env.ts
-│   │   ├── controllers/                  # auth.controller.ts, health.controller.ts
-│   │   ├── middleware/                   # auth.middleware.ts, error.middleware.ts, validate.middleware.ts
-│   │   ├── models/                       # User.ts, Mission.ts (Mongoose)
-│   │   ├── routes/                       # index.ts, auth.routes.ts, health.routes.ts
-│   │   ├── services/                     # auth.service.ts
-│   │   ├── sockets/                      # socket.ts (Socket.IO server)
-│   │   ├── tests/                        # runTests.ts (backend integration test suite)
-│   │   ├── types/                        # Server interfaces, roles, API responses
-│   │   ├── utils/                        # jwt.ts, response.ts
-│   │   ├── validators/                   # auth.validator.ts (Zod)
-│   │   ├── app.ts                        # Express application factory
-│   │   └── server.ts                     # HTTP + Socket.IO server bootstrap
-│   ├── package.json                      # Server dependencies & scripts
-│   ├── tsconfig.json                     # Server TypeScript configuration
-│   ├── .env.example                      # Server environment template
-│   └── .env                              # Server environment configuration
-│
-├── docs/                                 # Reference documentation & specifications
-├── docker-compose.yml                    # Local MongoDB 7.0 container configuration
-├── package.json                          # Root workspace runner (concurrently)
-├── .gitignore                            # Monorepo ignore rules
-└── README.md                             # Project manual
-```
-
----
-
-## 5. Environment Configuration
-
-### Backend (`server/.env`)
-Create `server/.env` based on `server/.env.example`:
-
-```ini
+### Backend Configuration (`server/.env`)
+```bash
 PORT=5000
+NODE_ENV=development
 MONGODB_URI=mongodb://localhost:27017/blackbox
-JWT_SECRET=blackbox_dev_jwt_secret_phase1_resilient_operations_2026
+JWT_SECRET=super-secret-blackbox-tactical-jwt-key-2026
 JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:5173
-NODE_ENV=development
+ENABLE_DEMO_MODE=true
 ```
 
-### Frontend (`client/.env`)
-Create `client/.env` based on `client/.env.example`:
-
-```ini
+### Frontend Configuration (`client/.env`)
+```bash
 VITE_API_URL=http://localhost:5000/api/v1
 VITE_SOCKET_URL=http://localhost:5000
+VITE_ENABLE_DEMO_MODE=true
 ```
 
 ---
 
-## 6. Database Setup
+## 5. How to Run Locally
 
-### Option A: Local MongoDB Service
-If you have MongoDB installed locally as a service on port 27017:
+### 1. Start MongoDB
+Ensure MongoDB is running locally on port 27017:
 ```bash
-# Verify connection
-mongosh "mongodb://localhost:27017/blackbox"
+mongod
+# Or using Docker:
+docker run -d -p 27017:27017 --name blackbox-mongo mongo:7
 ```
 
-### Option B: Docker Compose
+### 2. Install Dependencies & Build Backend
 ```bash
-docker compose up -d
-```
-
-### Option C: Automated In-Memory Fallback (Built-In)
-If no MongoDB instance is detected at `MONGODB_URI` during development or testing, BlackBox automatically boots an ephemeral in-memory MongoDB server (`mongodb-memory-server`) to ensure developer onboarding works with zero friction.
-
----
-
-## 7. Installation & Quick Start
-
-From the root directory:
-
-```bash
-# 1. Install root, server, and client dependencies
+cd server
 npm install
-cd server && npm install
-cd ../client && npm install
-cd ..
-
-# 2. Run both Client and Server concurrently
+npm run build
 npm run dev
 ```
+The server will start on `http://localhost:5000`.
 
-- **Frontend:** [http://localhost:5173](http://localhost:5173)
-- **Backend API:** [http://localhost:5000](http://localhost:5000)
-- **Healthcheck:** [http://localhost:5000/api/v1/health](http://localhost:5000/api/v1/health)
-
----
-
-## 8. Root Development Commands
-
-| Command | Action |
-| :--- | :--- |
-| `npm run dev` | Starts both React Vite dev server and Express Nodemon server simultaneously via `concurrently`. |
-| `npm run client` | Starts only the Vite frontend development server at `http://localhost:5173`. |
-| `npm run server` | Starts only the Express backend development server at `http://localhost:5000`. |
-| `npm run build` | Compiles both server TypeScript (`tsc`) and bundles the client with Vite + PWA. |
-| `npm run lint` | Runs type verification on both client and server codebases (`tsc --noEmit`). |
-| `npm test` | Runs the full integration test suite verifying health, database, auth, and Socket.IO. |
-
----
-
-## 9. API Architecture & Versioning
-
-All API routes follow the strict three-tier architecture:
-$$\text{Route} \longrightarrow \text{Controller} \longrightarrow \text{Service} \longrightarrow \text{Model}$$
-
-Every API endpoint is versioned under the `/api/v1/` prefix.
-
-### Standard Response Format
-
-#### Success (`2xx`):
-```json
-{
-  "success": true,
-  "data": { ... },
-  "message": "Operation completed successfully"
-}
+### 3. Install Dependencies & Start Frontend
+```bash
+cd ../client
+npm install
+npm run dev
 ```
+Open your browser to `http://localhost:5173`.
 
-#### Error (`4xx`, `5xx`):
-```json
-{
-  "success": false,
-  "message": "Human readable error description",
-  "code": "ERROR_CODE_CONSTANT",
-  "details": [ ... ]
-}
+---
+
+## 6. How to Run Automated Tests
+
+The backend test suite covers all Phase 1 through Phase 9 functionality (Authentication, Mission Lifecycle, Team Roster, Task State Machine, Real-Time Socket Events, Sync Engine, Conflict Resolution, Mission Replay, and Demo Mode):
+
+```bash
+cd server
+npm run test
+```
+**Current Test Status:** `230 PASSED, 0 FAILED`
+
+To build both client and server for production verification:
+```bash
+# Server build
+cd server && npm run build
+
+# Client build
+cd ../client && npm run build
 ```
 
 ---
 
-## 10. API Documentation
+## 7. Hackathon Demo Guide & Feature Scenarios
 
-### System Health
-```http
-GET /api/v1/health
-```
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "status": "operational",
-    "database": "connected",
-    "realtime": "ready",
-    "uptimeSeconds": 142,
-    "timestamp": "2026-09-26T08:30:00.000Z",
-    "version": "1.0.0-phase1"
-  },
-  "message": "BlackBox API is running"
-}
-```
+BlackBox features a built-in **Phase 9 Demo HUD** (floating tab at the bottom right) designed for presentation to evaluators. It exercises **real backend endpoints, real IndexedDB, real Socket.IO, and real MongoDB** (no fake state).
 
----
+### Step 1: Initialize / Reset Demo
+Click the floating **`DEMO HUD`** button in the bottom right corner and select:
+**`[ ↺ Reset Demo Environment ]`** $\to$ **`Confirm Demo Reset`**.
+- Resets demo database cleanly.
+- Seeds the standard mission: **Campus Emergency Operations**.
+- Creates 4 pre-configured users (Commander Marcus Cole, Operator Arjun Mehta, Operator Priya Sharma, Operator Rahul Sen).
+- Seeds 5 realistic tasks and 14 historical MissionEvents.
+- Automatically authenticates as Commander Marcus Cole.
 
-### Authentication Endpoints
+### Step 2: Demonstrate Real-Time Operations (ONLINE)
+- View the active mission with its 5 tasks, team roster, and live activity feed.
+- Notice the top-right connectivity pill: **`LIVE`** with RTT latency telemetry.
 
-#### 1. Register Operator
-```http
-POST /api/v1/auth/register
-Content-Type: application/json
-```
-**Request Body:**
-```json
-{
-  "name": "Commander Sarah Vance",
-  "email": "vance@blackbox.local",
-  "password": "SecurePassword123!",
-  "role": "COMMANDER"
-}
-```
-*Roles available: `COMMANDER`, `FIELD_OPERATOR` (default).*
+### Step 3: Demonstrate Complete Network Loss (OFFLINE)
+- In the **DEMO HUD**, click **`[ ✕ Simulate Offline ]`**.
+- The top banner turns red: **`OFFLINE MODE: No network connection detected`**.
+- The connectivity indicator updates to **`OFFLINE`** and Socket.IO disconnects.
+- Navigate to task **`Inspect Main Gate`** and click **`COMPLETE`**.
+- The task completes immediately in IndexedDB, and displays a pulsing **`PENDING SYNC`** badge.
+- Refresh the browser (`F5`): The task remains completed and the mutation remains queued in IndexedDB.
 
-**Response (201 Created):**
-```json
-{
-  "success": true,
-  "data": {
-    "user": {
-      "id": "6795f7...",
-      "name": "Commander Sarah Vance",
-      "email": "vance@blackbox.local",
-      "role": "COMMANDER",
-      "createdAt": "2026-09-26T08:30:00.000Z"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  },
-  "message": "User registered successfully"
-}
-```
+### Step 4: Demonstrate Push Synchronization (RECONNECT)
+- In the **DEMO HUD**, click **`[ ⚡ Restore Network (Sync) ]`**.
+- Sockets reconnect; the Phase 7 sync engine automatically dispatches queued mutations to `POST /api/v1/sync/push`.
+- The server updates MongoDB, writes a `TASK_COMPLETED` MissionEvent, and acknowledges the mutation.
+- The task badge flips to **`SYNCED`**, and the Sync Status Panel shows **`All changes synced`**.
 
-#### 2. Operator Sign In
-```http
-POST /api/v1/auth/login
-Content-Type: application/json
-```
-**Request Body:**
-```json
-{
-  "email": "vance@blackbox.local",
-  "password": "SecurePassword123!"
-}
-```
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "user": {
-      "id": "6795f7...",
-      "name": "Commander Sarah Vance",
-      "email": "vance@blackbox.local",
-      "role": "COMMANDER",
-      "createdAt": "2026-09-26T08:30:00.000Z"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  },
-  "message": "Login successful"
-}
-```
+### Step 5: Demonstrate Conflict Detection & Resolution
+- In the **DEMO HUD**, click **`[ ⚡ Trigger Conflict ]`**.
+- The server diverges the task upstream to `BLOCKED` with an emergency reason.
+- Upon synchronization, the Phase 7 sync engine detects version divergence and presents the **`ConflictDialog`**:
+  - **Your Offline Change:** `COMPLETED`
+  - **Current Server State:** `BLOCKED`
+- Click **`Keep My Change →`**.
+- The client dispatches resolution to `/api/v1/sync/conflicts/:id/resolve`, applying `COMPLETED` and logging `CONFLICT_RESOLVED`.
 
-#### 3. Session Sign Out
-```http
-POST /api/v1/auth/logout
-```
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": { "loggedOut": true },
-  "message": "Logged out successfully"
-}
-```
-
-#### 4. Current Operator Profile (Protected)
-```http
-GET /api/v1/auth/me
-Authorization: Bearer <JWT_TOKEN>
-```
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "6795f7...",
-    "name": "Commander Sarah Vance",
-    "email": "vance@blackbox.local",
-    "role": "COMMANDER",
-    "createdAt": "2026-09-26T08:30:00.000Z",
-    "updatedAt": "2026-09-26T08:30:00.000Z"
-  }
-}
-```
+### Step 6: Demonstrate Forensic Mission Replay
+- Click the prominent **`View Replay`** button on the mission header.
+- The **Mission Replay Workspace** displays the complete chronological event stream:
+  - Timeline scrubber with play/pause (`Space`), step forward (`Right Arrow`), step backward (`Left Arrow`).
+  - Reconstructed state panel showing task states and team status at any exact millisecond.
+  - Event telemetry details with actor identities and payloads.
 
 ---
 
-## 11. Security Foundation
+## 8. Demo Runbook Reference
 
-1. **Password Protection:** Plain-text passwords never enter the database; hashed using `bcryptjs` with salt work factor 10.
-2. **Data Sanitization:** Mongoose model transform strips `passwordHash` and internal version keys (`__v`) from all JSON serializations.
-3. **HTTP Hardening:** Helmet enables defensive HTTP headers (XSS filter, frameguard, no-sniff).
-4. **Validation:** All incoming request payloads validated strictly against Zod schemas before hitting business logic.
-5. **Role-Based Access Control:** `requireRole("COMMANDER")` middleware enforces server-side permission checks.
-6. **Safe Error Handling:** In production, internal error stacks and database connection strings are never leaked.
+For a live presentation runbook with exact presenter script timings, refer to:  
+[`docs/DEMO_RUNBOOK.md`](file:///c:/Users/Arya%20Bhagat/Desktop/BlackBox/docs/DEMO_RUNBOOK.md)
 
 ---
 
-## 12. Socket.IO Real-Time Architecture
+## 9. Security & Production Safeguards
 
-The real-time layer handles instant event propagation between command centers and operators:
-
-```
-[Browser / PWA]
-      ↕ (WebSocket / Polling Transport)
-[Socket.IO Server] (server/src/sockets/socket.ts)
-      ↕
-[Express HTTP Server] (server/src/server.ts)
-```
-
-- **Connection Lifecycle:** Detects client connect, client ping, server pong, and clean disconnects.
-- **Handshake Verification:** Server emits `system:welcome` event with server time upon socket authentication.
-- **Latency Telemetry:** Client sends periodic `client:ping` to measure real-time Round Trip Time (RTT) displayed live in the console header.
-
----
-
-## 13. Dual-State Connectivity Abstraction
-
-In offline-first systems, **network availability is NOT equivalent to backend reachability**.
-
-BlackBox tracks two distinct telemetry parameters:
-
-$$\text{networkAvailable} \quad \text{vs.} \quad \text{serverReachable}$$
-
-| Network Available | Server Reachable | Calculated Status | Operational State |
-| :---: | :---: | :---: | :--- |
-| **true** | **true** | `ONLINE` | Normal real-time operational mode. |
-| **true** | **false** | `RECONNECTING` | Device has Wi-Fi/cellular, but BlackBox API is unreachable or restarting. |
-| **false** | **false** | `OFFLINE` | Hardware offline. Operator retains full local console access with sync queues. |
-
-The frontend implements `useConnectivity()` and `useConnectivityStore` to monitor browser `online`/`offline` window events alongside periodic `/api/v1/health` background pings.
-
----
-
-## 14. Roadmap & Future Phases
-
-- **Phase 1 (Complete):** MERN Architecture Foundation, Dual-State Connectivity Abstraction, Responsive Shell.
-- **Phase 2 (Complete):** Authentication, Users & Role-Based Access Control (COMMANDER vs. FIELD_OPERATOR, HTTP-Only Cookies, Authenticated Socket.IO Streams with User Rooms, 403 Forbidden Backend Guards).
-- **Phase 3 (Next Phase):** Mission Operations Management (Missions, Tasks, Team Assignment, Severity Matrices).
-- **Phase 4:** Offline Mutation Queue & Synchronization Engine (IndexedDB & Local State Reconciliation).
-- **Phase 5:** Conflict Resolution Engine & Chronological Mission Replay.
-- **Phase 6:** Production Hardening, Edge Deployment, Performance Benchmarks.
+- **Isolated Demo Mode:** Demo accounts and missions use the dedicated `@demo.blackbox.internal` namespace. Resetting demo data never affects regular users.
+- **Environment Gate:** In production environments (`ENABLE_DEMO_MODE=false`), demo endpoints (`/api/v1/demo/*`) are completely disabled and return `403 DEMO_MODE_DISABLED`.
+- **Zero Sensitive Data Leaks:** Password hashes, JWT secrets, and connection strings are excluded from API payloads, IndexedDB, and client builds.

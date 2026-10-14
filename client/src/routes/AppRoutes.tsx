@@ -7,6 +7,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { MissionsPage } from '../pages/MissionsPage';
 import { CreateMissionPage } from '../pages/CreateMissionPage';
 import { MissionDetailPage } from '../pages/MissionDetailPage';
+import { MissionReplayPage } from '../pages/MissionReplayPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -40,6 +41,7 @@ export const AppRoutes: React.FC = () => {
           }
         />
         <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+        <Route path="/missions/:missionId/replay" element={<MissionReplayPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 
