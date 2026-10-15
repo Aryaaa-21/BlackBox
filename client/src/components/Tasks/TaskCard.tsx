@@ -132,9 +132,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           {task.title}
         </h4>
         {task.description && (
-          <p className="mt-1 text-xs font-mono text-blackbox-textSecondary line-clamp-2 leading-relaxed">
-            {task.description}
-          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer list-none text-[10px] font-mono uppercase tracking-[0.1em] text-blackbox-muted">Details</summary>
+            <p className="mt-1 text-xs font-mono text-blackbox-textSecondary line-clamp-2 leading-relaxed">{task.description}</p>
+          </details>
         )}
       </div>
 

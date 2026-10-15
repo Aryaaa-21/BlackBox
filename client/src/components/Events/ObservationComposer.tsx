@@ -36,10 +36,7 @@ export const ObservationComposer: React.FC<ObservationComposerProps> = ({ onReco
     <div className="bg-blackbox-surface border border-blackbox-border rounded-xl p-4 shadow-lg">
       <div className="flex items-center gap-2 mb-3">
         <ClipboardPenLine className="w-4 h-4 text-blackbox-cyan" />
-        <div>
-          <h2 className="text-sm font-mono font-bold text-blackbox-text uppercase tracking-wider">Record Observation</h2>
-          <p className="text-[11px] font-mono text-blackbox-textSecondary">Free-form field note / SITREP</p>
-        </div>
+          <h2 className="text-sm font-mono font-bold text-blackbox-text uppercase tracking-wider">Field report</h2>
       </div>
 
       {error && (
@@ -60,8 +57,8 @@ export const ObservationComposer: React.FC<ObservationComposerProps> = ({ onReco
         />
         <div className="flex items-center justify-between gap-3">
           <div className="text-[10px] font-mono min-h-4">
-            {status === 'PENDING' && <span className="text-amber-300">WAITING FOR CONNECTION</span>}
-            {status === 'SYNCED' && <span className="text-emerald-400">SYNCED</span>}
+            {status === 'PENDING' && <span className="text-blackbox-warning">LOCAL / PENDING</span>}
+            {status === 'SYNCED' && <span className="text-blackbox-info">RECORDED</span>}
           </div>
           <button
             type="submit"
@@ -69,7 +66,7 @@ export const ObservationComposer: React.FC<ObservationComposerProps> = ({ onReco
             className="px-3.5 py-2 rounded-lg bg-blackbox-cyan hover:bg-cyan-300 text-black text-xs font-mono font-bold border border-cyan-400 disabled:opacity-50 flex items-center gap-1.5"
           >
             {isSubmitting && <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />}
-            RECORD OBSERVATION
+            RECORD
           </button>
         </div>
       </form>

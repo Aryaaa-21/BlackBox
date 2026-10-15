@@ -52,11 +52,8 @@ export const MissionTeamPanel: React.FC<MissionTeamPanelProps> = ({
         <div>
           <h2 className="text-sm font-mono font-bold text-blackbox-text uppercase tracking-wider flex items-center gap-2">
             <Shield className="w-4 h-4 text-blackbox-cyan" />
-            OPERATIONAL TEAM ({activeMembers.length})
+            TEAM ({activeMembers.length})
           </h2>
-          <p className="text-[11px] font-mono text-blackbox-textSecondary mt-0.5">
-            Mission commanders and deployed tactical operators
-          </p>
         </div>
 
         {isCommander && (
@@ -80,7 +77,7 @@ export const MissionTeamPanel: React.FC<MissionTeamPanelProps> = ({
       {isLoading ? (
         <div className="py-8 text-center text-xs font-mono text-blackbox-muted flex items-center justify-center gap-2">
           <span className="w-3.5 h-3.5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-          Synchronizing team roster...
+          Loading team…
         </div>
       ) : (
         <div className="mt-4 space-y-5">
@@ -91,7 +88,7 @@ export const MissionTeamPanel: React.FC<MissionTeamPanelProps> = ({
             </div>
             {commanderMembers.length === 0 ? (
               <div className="text-xs font-mono text-zinc-500 italic p-3 rounded bg-blackbox-panel/40 border border-blackbox-border/50">
-                Commander unassigned
+                NO COMMANDER
               </div>
             ) : (
               <div className="space-y-2">
@@ -139,12 +136,7 @@ export const MissionTeamPanel: React.FC<MissionTeamPanelProps> = ({
 
             {fieldOperators.length === 0 ? (
               <div className="text-xs font-mono text-blackbox-muted text-center py-6 px-4 rounded-lg bg-blackbox-panel/40 border border-dashed border-blackbox-border">
-                No field operators deployed to this mission yet.
-                {isCommander && (
-                  <span className="block mt-1 text-[11px] text-zinc-500">
-                    Deploy field personnel using the button above to begin task delegation.
-                  </span>
-                )}
+                NO FIELD OPERATORS
               </div>
             ) : (
               <div className="space-y-2">

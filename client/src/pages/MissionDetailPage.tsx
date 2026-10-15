@@ -12,7 +12,6 @@ import {
   AlertCircle,
   Lock,
   User,
-  Radio,
   History,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
@@ -450,7 +449,7 @@ export const MissionDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="ops-page pb-16">
+    <div className="ops-page space-y-4 pb-16">
       {/* Phase 6: Offline/degraded status banner */}
       {offlineMode !== 'ONLINE' && missionId && (
         <OfflineBanner missionId={missionId} className="w-full" />
@@ -467,13 +466,15 @@ export const MissionDetailPage: React.FC = () => {
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <div className="flex items-center gap-2 text-blackbox-cyan">
-              <Radio className="h-4 w-4" aria-hidden="true" />
-              <span className="ops-kicker text-blackbox-cyan">Mission workspace</span>
-            </div>
-            <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight text-blackbox-text sm:text-2xl">
+            <div className="ops-kicker text-blackbox-cyan">Mission</div>
+            <h1 className="mt-1 line-clamp-2 font-display text-2xl font-bold tracking-tight text-blackbox-text sm:text-3xl">
               {selectedMission.title}
-            </h2>
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-blackbox-muted">
+              <span>{selectedMission.id.slice(0, 8).toUpperCase()}</span>
+              <span aria-hidden="true">/</span>
+              <span>{selectedMission.location}</span>
+            </div>
           </div>
         </div>
 
@@ -490,24 +491,19 @@ export const MissionDetailPage: React.FC = () => {
             }}
           />
           <ConnectionStatusIndicator />
-          <div className="hidden items-center gap-2 rounded-lg border border-blackbox-border bg-blackbox-surface px-3 py-2 text-xs text-blackbox-muted sm:flex">
-            <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
-            <span>Channel:</span>
-            <span className="text-blackbox-text font-bold">mission:{selectedMission.id.substring(0, 6)}</span>
-          </div>
           <Link
             to={`/missions/${selectedMission.id}/replay`}
-            className="ops-button-quiet border-cyan-800/60 text-cyan-300"
+            className="ops-button-quiet"
             title="Open Historical Mission Replay"
           >
-            <History className="w-3.5 h-3.5 text-cyan-400" />
+            <History className="w-3.5 h-3.5 text-blackbox-cobalt" />
             <span>Replay</span>
           </Link>
         </div>
       </div>
 
       {/* Mission Primary Header Card */}
-      <div className="ops-surface space-y-5 p-5 sm:p-6">
+      <div className="ops-surface space-y-4 p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
             <MissionStatusBadge status={selectedMission.status} size="lg" />
@@ -544,7 +540,7 @@ export const MissionDetailPage: React.FC = () => {
                     className="ops-button-primary px-4 py-2 font-mono text-xs"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Start Mission</span>
+                    <span>Start</span>
                   </button>
                 </>
               )}
@@ -557,7 +553,7 @@ export const MissionDetailPage: React.FC = () => {
                     className="px-3 py-2 rounded-lg bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/60 text-xs font-mono text-rose-300 flex items-center gap-1.5 transition-colors"
                   >
                     <XCircle className="w-3.5 h-3.5" />
-                    <span>Cancel Mission</span>
+                    <span>Cancel</span>
                   </button>
                   <button
                     onClick={openConfirmComplete}
@@ -565,7 +561,7 @@ export const MissionDetailPage: React.FC = () => {
                     className="ops-button-primary px-4 py-2 font-mono text-xs"
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
-                    <span>Complete Mission</span>
+                    <span>Complete</span>
                   </button>
                 </>
               )}
@@ -589,7 +585,7 @@ export const MissionDetailPage: React.FC = () => {
                 title="Inspect chronological event history and replay mission timeline"
               >
                 <History className="w-3.5 h-3.5" />
-                <span>View Replay</span>
+                  <span>Replay</span>
               </Link>
             </div>
           ) : (
@@ -608,34 +604,29 @@ export const MissionDetailPage: React.FC = () => {
                 title="Inspect chronological event history and replay mission timeline"
               >
                 <History className="w-3.5 h-3.5" />
-                <span>View Replay</span>
+                  <span>Replay</span>
               </Link>
             </div>
           )}
         </div>
 
-        {/* Mission Description */}
-        <div className="pt-4 border-t border-blackbox-border">
-          <h4 className="text-xs font-mono font-bold text-blackbox-muted uppercase tracking-wider mb-2">
-            Operational Directives & Description
-          </h4>
-          <p className="text-sm font-sans text-blackbox-text leading-relaxed whitespace-pre-wrap">
-            {selectedMission.description}
-          </p>
-        </div>
+        <details className="border-t border-blackbox-border pt-3">
+          <summary className="cursor-pointer list-none font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-blackbox-muted">Directives</summary>
+          <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-blackbox-textSecondary">{selectedMission.description}</p>
+        </details>
 
         {/* Lifecycle Timestamps & Details Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-blackbox-border text-xs font-mono">
+        <div className="grid grid-cols-2 gap-3 border-t border-blackbox-border pt-3 text-[10px] font-mono sm:grid-cols-4">
           <div>
-            <span className="text-blackbox-muted block mb-1">COMMANDING OFFICER</span>
-            <div className="flex items-center gap-1.5 text-blackbox-text font-medium truncate">
+            <span className="text-blackbox-muted block mb-1">COMMANDER</span>
+            <div className="flex items-center gap-1.5 truncate text-blackbox-text font-medium">
               <User className="w-3.5 h-3.5 text-blackbox-cyan shrink-0" />
               <span className="truncate">{creatorName}</span>
             </div>
           </div>
 
           <div>
-            <span className="text-blackbox-muted block mb-1">REGISTERED</span>
+            <span className="text-blackbox-muted block mb-1">CREATED</span>
             <div className="flex items-center gap-1.5 text-blackbox-textSecondary">
               <Calendar className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               <span>{new Date(selectedMission.createdAt).toLocaleDateString()}</span>
@@ -643,13 +634,7 @@ export const MissionDetailPage: React.FC = () => {
           </div>
 
           <div>
-            <span className="text-blackbox-muted block mb-1">
-              {selectedMission.startedAt
-                ? 'COMMENCED'
-                : selectedMission.cancelledAt
-                ? 'CANCELLED AT'
-                : 'COMMENCED'}
-            </span>
+            <span className="text-blackbox-muted block mb-1">STARTED</span>
             <div className="flex items-center gap-1.5 text-blackbox-textSecondary">
               <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               <span>
@@ -657,21 +642,17 @@ export const MissionDetailPage: React.FC = () => {
                   ? new Date(selectedMission.startedAt).toLocaleTimeString()
                   : selectedMission.cancelledAt
                   ? new Date(selectedMission.cancelledAt).toLocaleTimeString()
-                  : 'Pending Launch'}
+                  : '—'}
               </span>
             </div>
           </div>
 
           <div>
-            <span className="text-blackbox-muted block mb-1">
-              {selectedMission.completedAt ? 'COMPLETED AT' : 'LAST REVISION'}
-            </span>
+            <span className="text-blackbox-muted block mb-1">UPDATED</span>
             <div className="flex items-center gap-1.5 text-blackbox-textSecondary">
               <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               <span>
-                {selectedMission.completedAt
-                  ? new Date(selectedMission.completedAt).toLocaleTimeString()
-                  : new Date(selectedMission.updatedAt).toLocaleTimeString()}
+                {new Date(selectedMission.updatedAt).toLocaleTimeString()}
               </span>
             </div>
           </div>

@@ -46,7 +46,7 @@ export const MissionActivityFeed: React.FC<MissionActivityFeedProps> = ({
         <div className="flex items-center gap-2.5">
           <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)] animate-pulse" />
           <h2 className="text-sm font-semibold tracking-wider text-zinc-100 uppercase font-mono">
-            Mission Activity Feed
+            Mission log
           </h2>
           <span className="text-xs text-zinc-400 font-mono px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">
             {events.length}
@@ -70,12 +70,12 @@ export const MissionActivityFeed: React.FC<MissionActivityFeedProps> = ({
             }`}
           >
             {cat === 'ALL'
-              ? 'ALL ACTIVITY'
+               ? 'ALL'
               : cat === 'TASK'
-              ? 'TASKS'
+               ? 'TASK'
               : cat === 'MEMBER'
               ? 'TEAM'
-              : 'LIFECYCLE'}
+               : 'MISSION'}
           </button>
         ))}
       </div>
@@ -86,7 +86,7 @@ export const MissionActivityFeed: React.FC<MissionActivityFeedProps> = ({
           <div className="py-12 flex flex-col items-center justify-center text-center">
             <div className="w-6 h-6 border-2 border-zinc-600 border-t-cyan-400 rounded-full animate-spin mb-3" />
             <p className="text-xs font-mono text-zinc-400 tracking-wider">
-              ESTABLISHING STREAM & LOADING EVENTS...
+             Loading log…
             </p>
           </div>
         ) : error && events.length === 0 ? (
@@ -97,17 +97,12 @@ export const MissionActivityFeed: React.FC<MissionActivityFeedProps> = ({
               onClick={() => fetchEvents(missionId)}
               className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono rounded border border-zinc-700 transition-colors"
             >
-              Retry Connection
+              Retry
             </button>
           </div>
         ) : filteredEvents.length === 0 ? (
           <div className="py-12 px-4 text-center">
-            <p className="text-zinc-400 text-xs font-mono tracking-wide">
-              No operational events recorded in this category.
-            </p>
-            <p className="text-zinc-400 text-xs mt-1">
-              Events will be streamed here in real time as the mission unfolds.
-            </p>
+             <p className="text-zinc-400 text-xs font-mono tracking-wide">NO EVENTS</p>
           </div>
         ) : (
           <>
@@ -123,7 +118,7 @@ export const MissionActivityFeed: React.FC<MissionActivityFeedProps> = ({
                   disabled={isLoadingMore}
                   className="px-3.5 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-800 rounded border border-zinc-700/80 transition-colors disabled:opacity-50"
                 >
-                  {isLoadingMore ? 'LOADING OLDER EVENTS...' : 'LOAD OLDER ACTIVITY'}
+                   {isLoadingMore ? 'LOADING…' : 'LOAD OLDER'}
                 </button>
               </div>
             )}
