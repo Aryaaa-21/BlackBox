@@ -28,6 +28,7 @@ import { ErrorState } from '../components/Common/ErrorState';
 import { MissionTeamPanel } from '../components/Team/MissionTeamPanel';
 import { TaskList } from '../components/Tasks/TaskList';
 import { MissionActivityFeed } from '../components/Events/MissionActivityFeed';
+import { ObservationComposer } from '../components/Events/ObservationComposer';
 import { ConnectionStatusIndicator } from '../components/Events/ConnectionStatusIndicator';
 import { OfflineBanner } from '../components/Offline/OfflineBanner';
 import { SyncStatusPanel } from '../components/Sync/SyncStatusPanel';
@@ -38,6 +39,7 @@ import { Mission, MissionSeverity, MissionMember, Task, MissionEventCreatedPaylo
 import { useOfflineStore } from '../offline/offlineStore';
 import { missionRepository } from '../offline/mission.repository';
 import { taskRepository } from '../offline/task.repository';
+import { missionEventRepository } from '../offline/missionEvent.repository';
 import { useSyncStore, SyncConflict } from '../store/syncStore';
 import { syncConflict } from '../services/sync/syncConflict';
 
@@ -85,7 +87,6 @@ export const MissionDetailPage: React.FC = () => {
     stats: taskStats,
     isLoading: isTasksLoading,
     fetchTasks,
-    unassignTask,
     handleTaskCreated,
     handleTaskUpdated,
     handleTaskAssigned,
@@ -449,36 +450,35 @@ export const MissionDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="ops-page pb-16">
       {/* Phase 6: Offline/degraded status banner */}
       {offlineMode !== 'ONLINE' && missionId && (
         <OfflineBanner missionId={missionId} className="w-full" />
       )}
       {/* Top Navigation */}
-      <div className="flex items-center justify-between pb-4 border-b border-blackbox-border">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-4 border-b border-blackbox-border pb-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
           <Link
             to="/missions"
-            className="p-2 rounded-lg bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border text-blackbox-muted hover:text-blackbox-text transition-colors"
+            className="ops-button-quiet min-h-10 min-w-10 shrink-0 px-2"
             title="Back to Missions"
+            aria-label="Back to missions"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blackbox-cyan animate-pulse" />
-              <span className="text-xs font-mono text-blackbox-cyan uppercase tracking-wider font-semibold">
-                TACTICAL WORKSPACE // MISSION
-              </span>
+            <div className="flex items-center gap-2 text-blackbox-cyan">
+              <Radio className="h-4 w-4" aria-hidden="true" />
+              <span className="ops-kicker text-blackbox-cyan">Mission workspace</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold font-mono text-blackbox-text mt-0.5 line-clamp-1">
+            <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight text-blackbox-text sm:text-2xl">
               {selectedMission.title}
             </h2>
           </div>
         </div>
 
         {/* Live Channel Status & Indicator */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <SyncStatusPanel
             compact
             missionId={missionId}
@@ -490,14 +490,14 @@ export const MissionDetailPage: React.FC = () => {
             }}
           />
           <ConnectionStatusIndicator />
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted">
+          <div className="hidden items-center gap-2 rounded-lg border border-blackbox-border bg-blackbox-surface px-3 py-2 text-xs text-blackbox-muted sm:flex">
             <Radio className="w-3.5 h-3.5 text-blackbox-cyan animate-pulse" />
             <span>Channel:</span>
             <span className="text-blackbox-text font-bold">mission:{selectedMission.id.substring(0, 6)}</span>
           </div>
           <Link
             to={`/missions/${selectedMission.id}/replay`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-800/60 text-xs font-mono text-cyan-300 transition-colors shadow-sm"
+            className="ops-button-quiet border-cyan-800/60 text-cyan-300"
             title="Open Historical Mission Replay"
           >
             <History className="w-3.5 h-3.5 text-cyan-400" />
@@ -507,7 +507,7 @@ export const MissionDetailPage: React.FC = () => {
       </div>
 
       {/* Mission Primary Header Card */}
-      <div className="p-6 rounded-xl bg-blackbox-surface border border-blackbox-border shadow-sm space-y-5">
+      <div className="ops-surface space-y-5 p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
             <MissionStatusBadge status={selectedMission.status} size="lg" />
@@ -541,7 +541,7 @@ export const MissionDetailPage: React.FC = () => {
                   <button
                     onClick={openConfirmStart}
                     disabled={isActionLoading}
-                    className="px-4 py-2 rounded-lg bg-blackbox-cyan hover:bg-cyan-300 text-black font-mono font-bold text-xs border border-cyan-400 flex items-center gap-2 shadow-[0_0_12px_rgba(0,210,255,0.25)] transition-all"
+                    className="ops-button-primary px-4 py-2 font-mono text-xs"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                     <span>Start Mission</span>
@@ -562,7 +562,7 @@ export const MissionDetailPage: React.FC = () => {
                   <button
                     onClick={openConfirmComplete}
                     disabled={isActionLoading}
-                    className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs border border-emerald-400 flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.25)] transition-all"
+                    className="ops-button-primary px-4 py-2 font-mono text-xs"
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
                     <span>Complete Mission</span>
@@ -583,7 +583,7 @@ export const MissionDetailPage: React.FC = () => {
                 to={`/missions/${selectedMission.id}/replay`}
                 className={`px-3.5 py-2 rounded-lg font-mono text-xs font-bold flex items-center gap-1.5 transition-all ${
                   selectedMission.status === 'COMPLETED'
-                    ? 'bg-cyan-500 hover:bg-cyan-400 text-black border border-cyan-400 shadow-[0_0_14px_rgba(0,210,255,0.35)]'
+                    ? 'bg-blackbox-cyan text-blackbox-text border border-blackbox-cyan'
                     : 'bg-blackbox-panel hover:bg-zinc-800 border border-blackbox-border hover:border-cyan-500/50 text-cyan-400'
                 }`}
                 title="Inspect chronological event history and replay mission timeline"
@@ -679,8 +679,8 @@ export const MissionDetailPage: React.FC = () => {
       </div>
 
       {/* Tactical Modules: Team Roster, Activity Feed & Operational Tasks (Sections 45, 46, 50, 53) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
+      <div className="mission-detail-modules grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="order-2 space-y-6 lg:order-2 lg:col-span-1">
           <MissionTeamPanel
             missionId={selectedMission.id}
             members={members}
@@ -695,17 +695,31 @@ export const MissionDetailPage: React.FC = () => {
             isLoading={isTeamLoading}
           />
 
+          <ObservationComposer
+            onRecord={async (text) => {
+              if (!user) throw new Error('Authentication is required to record an observation.');
+              const result = await missionEventRepository.recordObservation({
+                missionId: selectedMission.id,
+                text,
+                actorId: user.id,
+                actorName: user.name,
+                deviceId,
+                isOperationallyOnline: isOperationallyOnline(),
+              });
+              addEvent(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
+              return result;
+            }}
+          />
+
           {/* Mission Activity Feed (Phase 5, Section 47, 53) */}
           <MissionActivityFeed missionId={selectedMission.id} />
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          {/* Phase 7: Pending changes queue with sync progression & retry */}
-          {missionId && (
-            <PendingChangesPanel missionId={missionId} />
-          )}
-
-          <TaskList
+          <div className="order-1 space-y-6 lg:order-1 lg:col-span-2">
+            <TaskList
             missionId={selectedMission.id}
             tasks={tasks}
             stats={taskStats}
@@ -753,7 +767,33 @@ export const MissionDetailPage: React.FC = () => {
               }
             }}
             onUnassignTask={async (taskId) => {
-              await unassignTask(taskId);
+              if (!user) return;
+              const result = await taskRepository.unassignTask(
+                taskId,
+                selectedMission.id,
+                user.id,
+                deviceId,
+                isOperationallyOnline()
+              );
+              handleTaskUnassigned(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
+            }}
+            onUpdateTask={async (taskId, payload) => {
+              if (!user) return;
+              const result = await taskRepository.updateTask(
+                taskId,
+                selectedMission.id,
+                payload,
+                user.id,
+                deviceId,
+                isOperationallyOnline()
+              );
+              handleTaskUpdated(result.data);
+              if (result.isLocal) {
+                await refreshPendingCountForMission(selectedMission.id);
+              }
             }}
             onStatusChange={async (taskId, status) => {
               // Phase 6: Route through repository for offline support
@@ -772,7 +812,12 @@ export const MissionDetailPage: React.FC = () => {
               }
             }}
           />
-        </div>
+
+            {/* Phase 7: Pending changes queue with sync progression & retry */}
+            {missionId && (
+              <PendingChangesPanel missionId={missionId} />
+            )}
+          </div>
       </div>
 
       {/* Confirmation Dialog */}

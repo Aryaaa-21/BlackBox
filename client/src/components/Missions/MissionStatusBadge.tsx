@@ -15,26 +15,26 @@ export const MissionStatusBadge: React.FC<MissionStatusBadgeProps> = ({
     DRAFT: {
       label: 'DRAFT',
       icon: FileEdit,
-      classes: 'bg-zinc-800/80 text-zinc-300 border-zinc-700/80',
-      iconClasses: 'text-zinc-400',
+      classes: 'bg-blackbox-panel text-blackbox-textSecondary border-blackbox-border',
+      iconClasses: 'text-blackbox-muted',
     },
     ACTIVE: {
       label: 'ACTIVE',
       icon: Radio,
-      classes: 'bg-cyan-950/60 text-blackbox-cyan border-cyan-700/60 shadow-[0_0_8px_rgba(0,210,255,0.2)]',
+      classes: 'bg-blackbox-cyan/15 text-blackbox-cyan border-blackbox-cyan/50',
       iconClasses: 'text-blackbox-cyan animate-pulse',
     },
     COMPLETED: {
       label: 'COMPLETED',
       icon: CheckCircle2,
-      classes: 'bg-emerald-950/60 text-emerald-400 border-emerald-700/60',
-      iconClasses: 'text-emerald-400',
+      classes: 'bg-blackbox-cyan/20 text-blackbox-info border-blackbox-cyan/55',
+      iconClasses: 'text-blackbox-info',
     },
     CANCELLED: {
       label: 'CANCELLED',
       icon: XCircle,
-      classes: 'bg-rose-950/60 text-rose-400 border-rose-800/60',
-      iconClasses: 'text-rose-400',
+      classes: 'bg-blackbox-critical/25 text-blackbox-textSecondary border-blackbox-critical/70',
+      iconClasses: 'text-blackbox-critical',
     },
   }[status];
 

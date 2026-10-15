@@ -94,7 +94,7 @@ Ensure the backend has demo mode enabled (default is `true` in development):
 2. **Observe automatic Phase 7 sync engine execution:**
    - Connectivity indicator shifts: `OFFLINE` $\to$ `SYNCING` $\to$ `LIVE`.
    - Socket.IO reconnects.
-   - Sync engine automatically batches the offline mutation to `/api/v1/sync/push`.
+    - Sync engine automatically batches the offline mutation to `/api/v1/sync`.
    - Server validates state machine, updates MongoDB, writes immutable `TASK_COMPLETED` MissionEvent.
    - Server acknowledges mutation; IndexedDB removes item from queue.
    - Task badge flips from `PENDING SYNC` to **`SYNCED`** (emerald).

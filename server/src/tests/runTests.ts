@@ -12,6 +12,7 @@ import { MissionEvent } from '../models/MissionEvent';
 import mongoose from 'mongoose';
 import { missionEventService } from '../services/missionEvent.service';
 import { MissionEventType, EventTargetType, EventSource } from '../types';
+import { randomUUID } from 'crypto';
 
 async function runTests() {
   console.log('\n--- STARTING BLACKBOX PHASE 2 TEST SUITE ---\n');
@@ -737,6 +738,143 @@ async function runTests() {
     assert(task1Res.body.data.task.createdBy === commanderAId || task1Res.body.data.task.createdBy?.id === commanderAId, 'Server derived createdBy as Commander');
     const task1Id = task1Res.body.data.task.id;
 
+    // Phase 1 offline mutation compatibility: UPDATE_TASK via POST /sync.
+    const updateBase = task1Res.body.data.task.updatedAt as string;
+    const updateMutation = {
+      mutationId: randomUUID(),
+      missionId: drillMissionId,
+      operationType: 'UPDATE_TASK',
+      entityType: 'TASK',
+      entityId: task1Id,
+      payload: {
+        title: 'Check Zone C — Updated Offline',
+        description: 'Offline revision: inspect the assigned area and report access anomalies.',
+        priority: 'CRITICAL',
+      },
+      actorId: commanderAId,
+      deviceId: 'phase1-test-device',
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-update-${randomUUID()}`,
+      baseUpdatedAt: updateBase,
+    };
+    const updateSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [updateMutation] });
+    assert(updateSyncRes.status === 200, 'Offline UPDATE_TASK mutation is accepted by POST /sync');
+    assert(updateSyncRes.body.data.results[0].status === 'SYNCED', 'Offline UPDATE_TASK mutation syncs successfully');
+    assert(updateSyncRes.body.data.results[0].entity.title === 'Check Zone C — Updated Offline', 'Synced UPDATE_TASK returns authoritative fields');
+    const updateEventCount = await MissionEvent.countDocuments({
+      missionId: drillMissionId,
+      eventType: 'TASK_UPDATED',
+      idempotencyKey: updateMutation.idempotencyKey,
+    });
+    assert(updateEventCount === 1, 'Synced UPDATE_TASK creates one idempotent TASK_UPDATED event');
+
+    const duplicateUpdateSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [updateMutation] });
+    assert(duplicateUpdateSyncRes.body.data.results[0].status === 'DUPLICATE', 'Retrying UPDATE_TASK returns DUPLICATE without reapplying');
+    assert(
+      await MissionEvent.countDocuments({ missionId: drillMissionId, idempotencyKey: updateMutation.idempotencyKey }) === 1,
+      'Retrying UPDATE_TASK does not duplicate its MissionEvent'
+    );
+
+    const concurrentTask = await request
+      .get(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    const concurrentMutation = {
+      ...updateMutation,
+      mutationId: randomUUID(),
+      payload: { title: 'Concurrent idempotency validation', description: 'One execution only.' },
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-concurrent-${randomUUID()}`,
+      baseUpdatedAt: concurrentTask.body.data.task.updatedAt,
+    };
+    const concurrentResults = await Promise.all([
+      request.post('/api/v1/sync').set('Authorization', `Bearer ${commanderToken}`).send({ mutations: [concurrentMutation] }),
+      request.post('/api/v1/sync').set('Authorization', `Bearer ${commanderToken}`).send({ mutations: [concurrentMutation] }),
+    ]);
+    const concurrentStatuses = concurrentResults.map((response) => response.body.data.results[0].status).sort();
+    assert(
+      concurrentStatuses.join(',') === 'DUPLICATE,SYNCED',
+      'Concurrent duplicate mutations serialize to one SYNCED and one DUPLICATE result'
+    );
+    assert(
+      await MissionEvent.countDocuments({ missionId: drillMissionId, idempotencyKey: concurrentMutation.idempotencyKey }) === 1,
+      'Concurrent duplicate mutations create one MissionEvent'
+    );
+
+    // Conflict validation: stale UPDATE_TASK must not overwrite a newer server version.
+    const conflictBase = await request
+      .get(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await request
+      .patch(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ title: 'Server-side newer task revision' });
+    const staleUpdateMutation = {
+      ...updateMutation,
+      mutationId: randomUUID(),
+      payload: { title: 'Stale offline task revision' },
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-conflict-server-${randomUUID()}`,
+      baseUpdatedAt: conflictBase.body.data.task.updatedAt,
+    };
+    const staleUpdateRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [staleUpdateMutation] });
+    assert(staleUpdateRes.body.data.results[0].status === 'CONFLICT', 'Stale UPDATE_TASK produces a SyncConflict');
+    const keepServerConflictId = staleUpdateRes.body.data.results[0].conflict.conflictId;
+    const keepServerRes = await request
+      .post(`/api/v1/sync/conflicts/${keepServerConflictId}/resolve`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ resolution: 'KEEP_SERVER' });
+    assert(keepServerRes.status === 200, 'KEEP_SERVER resolves a task conflict');
+    assert(keepServerRes.body.data.entity.title === 'Server-side newer task revision', 'KEEP_SERVER preserves server state');
+    const duplicateKeepServer = await request
+      .post(`/api/v1/sync/conflicts/${keepServerConflictId}/resolve`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ resolution: 'KEEP_SERVER' });
+    assert(duplicateKeepServer.status === 409, 'Resolving the same conflict twice is rejected');
+
+    // KEEP_LOCAL re-applies the intended change through the normal task service.
+    const keepLocalBase = await request
+      .get(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await request
+      .patch(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ title: 'Another server revision' });
+    const keepLocalMutation = {
+      ...staleUpdateMutation,
+      mutationId: randomUUID(),
+      payload: { title: 'Commander approved local revision' },
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-conflict-local-${randomUUID()}`,
+      baseUpdatedAt: keepLocalBase.body.data.task.updatedAt,
+    };
+    const keepLocalSync = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [keepLocalMutation] });
+    assert(keepLocalSync.body.data.results[0].status === 'CONFLICT', 'Second stale UPDATE_TASK produces a conflict');
+    const keepLocalConflictId = keepLocalSync.body.data.results[0].conflict.conflictId;
+    const keepLocalRes = await request
+      .post(`/api/v1/sync/conflicts/${keepLocalConflictId}/resolve`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ resolution: 'KEEP_LOCAL' });
+    assert(keepLocalRes.status === 200, 'KEEP_LOCAL resolves through the task service');
+    assert(keepLocalRes.body.data.entity.title === 'Commander approved local revision', 'KEEP_LOCAL applies the intended local change');
+
     // 45. Task Creation Security & Validation (Section 25 & 95)
     // Field Operator cannot create task
     const opCreateTaskRes = await request
@@ -791,6 +929,40 @@ async function runTests() {
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ userId: operatorAId });
     assert(opAssignRes.status === 403, 'Field Operator cannot assign tasks (403 Forbidden)');
+
+    // Phase 1 offline mutation compatibility: UNASSIGN_TASK via POST /sync.
+    const assignedTaskSnapshot = await request
+      .get(`/api/v1/tasks/${task1Id}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    const unassignMutation = {
+      mutationId: randomUUID(),
+      missionId: drillMissionId,
+      operationType: 'UNASSIGN_TASK',
+      entityType: 'TASK',
+      entityId: task1Id,
+      payload: {},
+      actorId: commanderAId,
+      deviceId: 'phase1-test-device',
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-unassign-${randomUUID()}`,
+      baseUpdatedAt: assignedTaskSnapshot.body.data.task.updatedAt,
+    };
+    const unassignSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [unassignMutation] });
+    assert(unassignSyncRes.body.data.results[0].status === 'SYNCED', 'Offline UNASSIGN_TASK mutation syncs successfully');
+    assert(unassignSyncRes.body.data.results[0].entity.assignedTo === null, 'Synced UNASSIGN_TASK clears assignedTo authoritatively');
+    const duplicateUnassignSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [unassignMutation] });
+    assert(duplicateUnassignSyncRes.body.data.results[0].status === 'DUPLICATE', 'Retrying UNASSIGN_TASK returns DUPLICATE');
+    assert(
+      await MissionEvent.countDocuments({ missionId: drillMissionId, idempotencyKey: unassignMutation.idempotencyKey }) === 1,
+      'Retrying UNASSIGN_TASK does not duplicate its MissionEvent'
+    );
 
     // 47. Unassign Task (Section 28 & 96)
     const unassignRes = await request
@@ -1038,6 +1210,58 @@ async function runTests() {
     assert(eventsListRes.body.data.events.length >= 8, 'Events response contains all generated events');
     assert(eventsListRes.body.data.pagination.page === 1, 'Pagination page is 1');
     assert(eventsListRes.body.data.pagination.total >= 8, 'Pagination total tracks total events');
+
+    // Phase 1 observation recording: online endpoint plus queued mutation path.
+    const onlineObservationKey = `phase1-online-observation-${randomUUID()}`;
+    const onlineObservationRes = await request
+      .post(`/api/v1/missions/${drillMissionId}/events/observations`)
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        text: 'Emergency security lockout detected at Main Gate. Two inspection tasks are affected.',
+        idempotencyKey: onlineObservationKey,
+        clientCreatedAt: new Date().toISOString(),
+      });
+    assert(onlineObservationRes.status === 201, 'Online observation endpoint records an observation');
+    assert(
+      onlineObservationRes.body.data.event.eventType === 'OBSERVATION_RECORDED',
+      'Online observation creates OBSERVATION_RECORDED'
+    );
+
+    const observationMutation = {
+      mutationId: randomUUID(),
+      missionId: drillMissionId,
+      operationType: 'RECORD_OBSERVATION',
+      entityType: 'EVENT',
+      entityId: randomUUID(),
+      payload: { text: 'Perimeter team reports a second access anomaly near the east service road.' },
+      actorId: commanderAId,
+      deviceId: 'phase1-test-device',
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `phase1-observation-${randomUUID()}`,
+    };
+    const observationSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [observationMutation] });
+    assert(observationSyncRes.body.data.results[0].status === 'SYNCED', 'Offline RECORD_OBSERVATION mutation syncs successfully');
+    assert(
+      observationSyncRes.body.data.results[0].entity.eventType === 'OBSERVATION_RECORDED',
+      'Synced observation creates a real MissionEvent'
+    );
+    const duplicateObservationSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ mutations: [observationMutation] });
+    assert(duplicateObservationSyncRes.body.data.results[0].status === 'DUPLICATE', 'Retrying RECORD_OBSERVATION returns DUPLICATE');
+    assert(
+      await MissionEvent.countDocuments({ missionId: drillMissionId, idempotencyKey: observationMutation.idempotencyKey }) === 1,
+      'Retrying RECORD_OBSERVATION does not duplicate MissionEvents'
+    );
+    assert(
+      await MissionEvent.countDocuments({ missionId: drillMissionId, eventType: 'OBSERVATION_RECORDED' }) >= 2,
+      'Mission history contains online and offline observations'
+    );
 
     // Actor details populated safely without leaking secrets (Section 15, 50, 106)
     const firstEvent = eventsListRes.body.data.events[0];

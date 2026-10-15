@@ -9,7 +9,9 @@ import {
   UserPayload,
   MissionEventType,
   EventTargetType,
+  EventSource,
 } from '../types';
+import { RecordObservationInput } from '../validators/observation.validator';
 import { AppError } from '../middleware/error.middleware';
 import { getIO } from '../sockets/socket';
 
@@ -145,6 +147,33 @@ class MissionEventService {
     });
 
     return event;
+  }
+
+  /** Record a user-authored free-form observation after mission access is verified. */
+  async recordObservation(
+    missionId: string,
+    user: UserPayload,
+    input: RecordObservationInput
+  ): Promise<IMissionEventDocument> {
+    const canAccess = await this.canUserAccessMission(missionId, user);
+    if (!canAccess) {
+      throw new AppError(
+        'Access denied. You are not authorized to record observations for this mission.',
+        403,
+        'MISSION_ACCESS_DENIED'
+      );
+    }
+
+    return this.createMissionEvent({
+      missionId,
+      actorId: user.id,
+      eventType: MissionEventType.OBSERVATION_RECORDED,
+      targetType: EventTargetType.OBSERVATION,
+      payload: { text: input.text.trim() },
+      source: EventSource.USER,
+      clientCreatedAt: input.clientCreatedAt ? new Date(input.clientCreatedAt) : undefined,
+      idempotencyKey: input.idempotencyKey,
+    });
   }
 
   /**

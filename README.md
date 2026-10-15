@@ -26,7 +26,7 @@ OFFLINE OPERATIONS (IndexedDB Cache + Client State Machine)
    │
    ▼ [Network Restored]
 PUSH SYNCHRONIZATION (Phase 7 Sync Engine)
-   │  • Batches queued mutations to /api/v1/sync/push
+   │  • Batches queued mutations to /api/v1/sync
    │  • Server validates against MongoDB & emits live room broadcasts
    │  • Detects upstream conflicts (e.g., remote server override)
    │
@@ -163,7 +163,7 @@ Click the floating **`DEMO HUD`** button in the bottom right corner and select:
 
 ### Step 4: Demonstrate Push Synchronization (RECONNECT)
 - In the **DEMO HUD**, click **`[ ⚡ Restore Network (Sync) ]`**.
-- Sockets reconnect; the Phase 7 sync engine automatically dispatches queued mutations to `POST /api/v1/sync/push`.
+- Sockets reconnect; the Phase 7 sync engine automatically dispatches queued mutations to `POST /api/v1/sync`.
 - The server updates MongoDB, writes a `TASK_COMPLETED` MissionEvent, and acknowledges the mutation.
 - The task badge flips to **`SYNCED`**, and the Sync Status Panel shows **`All changes synced`**.
 

@@ -21,6 +21,8 @@ import {
 import { TaskCard } from './TaskCard';
 import { CreateTaskDialog } from './CreateTaskDialog';
 import { AssignTaskModal } from './AssignTaskModal';
+import { TaskEditDialog } from './TaskEditDialog';
+import { UpdateTaskPayload } from '../../types';
 
 interface TaskListProps {
   missionId: string;
@@ -37,6 +39,7 @@ interface TaskListProps {
   onAssignTask: (taskId: string, userId: string) => Promise<void>;
   onUnassignTask: (taskId: string) => Promise<void>;
   onStatusChange: (taskId: string, status: TaskStatus) => Promise<void>;
+  onUpdateTask: (taskId: string, payload: UpdateTaskPayload) => Promise<void>;
 }
 
 export const TaskList: React.FC<TaskListProps> = ({
@@ -54,9 +57,11 @@ export const TaskList: React.FC<TaskListProps> = ({
   onAssignTask,
   onUnassignTask,
   onStatusChange,
+  onUpdateTask,
 }) => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedTaskForAssign, setSelectedTaskForAssign] = useState<Task | null>(null);
+  const [selectedTaskForEdit, setSelectedTaskForEdit] = useState<Task | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -146,7 +151,7 @@ export const TaskList: React.FC<TaskListProps> = ({
         {isCommander && missionOperational && (
           <button
             onClick={() => setIsCreateDialogOpen(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-blackbox-cyan hover:bg-cyan-300 text-black text-xs font-mono font-bold border border-cyan-400 transition-all flex items-center gap-1.5 self-start sm:self-auto shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+            className="ops-button-primary px-3.5 py-1.5 text-xs self-start sm:self-auto"
           >
             <PlusCircle className="w-3.5 h-3.5" />
             <span>CREATE TASK</span>
@@ -166,7 +171,7 @@ export const TaskList: React.FC<TaskListProps> = ({
         </div>
         <div className="w-full h-2 bg-blackbox-surface rounded-full overflow-hidden border border-blackbox-border/80">
           <div
-            className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-300 rounded-full"
+            className="h-full rounded-full bg-blackbox-cyan transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -330,6 +335,7 @@ export const TaskList: React.FC<TaskListProps> = ({
               missionMembers={members}
               onStatusChange={onStatusChange}
               onOpenAssignModal={(t) => setSelectedTaskForAssign(t)}
+              onOpenEditModal={(t) => setSelectedTaskForEdit(t)}
             />
           ))
         )}
@@ -352,6 +358,13 @@ export const TaskList: React.FC<TaskListProps> = ({
         onClose={() => setSelectedTaskForAssign(null)}
         onAssign={onAssignTask}
         onUnassign={onUnassignTask}
+      />
+
+      <TaskEditDialog
+        isOpen={selectedTaskForEdit !== null}
+        task={selectedTaskForEdit}
+        onClose={() => setSelectedTaskForEdit(null)}
+        onUpdateTask={onUpdateTask}
       />
     </div>
   );

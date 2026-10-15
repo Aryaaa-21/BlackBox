@@ -132,6 +132,8 @@ export const mutationQueueRepository = {
     actorId: string;
     deviceId: string;
     baseUpdatedAt?: string;
+    idempotencyKey?: string;
+    clientCreatedAt?: string;
   }): PendingMutation {
     const now = new Date().toISOString();
     return {
@@ -143,9 +145,9 @@ export const mutationQueueRepository = {
       payload: params.payload,
       actorId: params.actorId,
       deviceId: params.deviceId,
-      idempotencyKey: crypto.randomUUID(), // stable per mutation
+      idempotencyKey: params.idempotencyKey ?? crypto.randomUUID(), // stable per mutation
       createdAt: now,
-      clientCreatedAt: now,
+      clientCreatedAt: params.clientCreatedAt ?? now,
       status: 'PENDING',
       retryCount: 0,
       baseUpdatedAt: params.baseUpdatedAt,

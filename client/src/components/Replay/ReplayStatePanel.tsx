@@ -90,9 +90,11 @@ export const ReplayStatePanel: React.FC<ReplayStatePanelProps> = ({ onInspectTas
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-blackbox-border pb-1">
+      <div className="flex items-center gap-1 border-b border-blackbox-border pb-1" role="tablist" aria-label="Replay state views">
         <button
           onClick={() => setActiveTab('TASKS')}
+          role="tab"
+          aria-selected={activeTab === 'TASKS'}
           className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
             activeTab === 'TASKS'
               ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40'
@@ -104,6 +106,8 @@ export const ReplayStatePanel: React.FC<ReplayStatePanelProps> = ({ onInspectTas
 
         <button
           onClick={() => setActiveTab('TEAM')}
+          role="tab"
+          aria-selected={activeTab === 'TEAM'}
           className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
             activeTab === 'TEAM'
               ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40'
@@ -115,6 +119,8 @@ export const ReplayStatePanel: React.FC<ReplayStatePanelProps> = ({ onInspectTas
 
         <button
           onClick={() => setActiveTab('OBSERVATIONS')}
+          role="tab"
+          aria-selected={activeTab === 'OBSERVATIONS'}
           className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
             activeTab === 'OBSERVATIONS'
               ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40'
@@ -127,6 +133,8 @@ export const ReplayStatePanel: React.FC<ReplayStatePanelProps> = ({ onInspectTas
         {conflicts.length > 0 && (
           <button
             onClick={() => setActiveTab('CONFLICTS')}
+            role="tab"
+            aria-selected={activeTab === 'CONFLICTS'}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1 ${
               activeTab === 'CONFLICTS'
                 ? 'bg-orange-500/20 text-orange-300 font-bold border border-orange-500/40'
@@ -163,6 +171,10 @@ export const ReplayStatePanel: React.FC<ReplayStatePanelProps> = ({ onInspectTas
                   <div
                     key={task.id}
                     onClick={() => onInspectTask(task)}
+                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onInspectTask(task); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Inspect replay history for ${task.title}`}
                     className="p-3 rounded-lg bg-blackbox-bg hover:bg-blackbox-panel border border-blackbox-border cursor-pointer transition-colors group space-y-1.5"
                   >
                     <div className="flex items-center justify-between gap-2">

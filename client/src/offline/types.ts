@@ -133,7 +133,8 @@ export type MutationOperationType =
   | 'UPDATE_TASK'
   | 'ASSIGN_TASK'
   | 'UNASSIGN_TASK'
-  | 'UPDATE_TASK_STATUS';
+  | 'UPDATE_TASK_STATUS'
+  | 'RECORD_OBSERVATION';
 
 export type MutationStatus = 'PENDING' | 'READY_FOR_SYNC' | 'FAILED';
 

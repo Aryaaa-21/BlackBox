@@ -16,6 +16,7 @@ const OPERATION_LABEL: Record<string, string> = {
   ASSIGN_TASK: 'Task assigned',
   UNASSIGN_TASK: 'Task unassigned',
   UPDATE_TASK: 'Task updated',
+  RECORD_OBSERVATION: 'Observation recorded',
 };
 
 const STATUS_STYLE: Record<string, string> = {

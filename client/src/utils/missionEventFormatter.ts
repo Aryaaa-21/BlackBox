@@ -121,6 +121,7 @@ export function formatMissionEvent(event: MissionEvent): FormattedMissionEvent {
     case MissionEventType.OBSERVATION_RECORDED:
       action = 'recorded field observation';
       targetLabel = (payload.title as string) || 'Observation';
+      details = (payload.text as string) || (payload.observation as string) || undefined;
       badgeVariant = 'default';
       break;
 

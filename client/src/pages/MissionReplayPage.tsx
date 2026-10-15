@@ -108,7 +108,11 @@ export const MissionReplayPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 pb-16 animate-in fade-in duration-150">
+    <div className="ops-page pb-16 animate-fade-in">
+      <div className="flex items-center justify-between rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200" role="status">
+        <span className="font-semibold">Replay mode</span>
+        <span className="text-amber-200/75">Read only · historical events</span>
+      </div>
       {/* Replay Header */}
       <ReplayHeader />
 
@@ -118,7 +122,7 @@ export const MissionReplayPage: React.FC = () => {
       {/* Main Tactical Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Interactive Timeline (5 columns on desktop) */}
-        <div className="lg:col-span-5 h-[700px]">
+        <div className="h-[420px] lg:col-span-5 lg:h-[700px]">
           <ReplayTimeline />
         </div>
 

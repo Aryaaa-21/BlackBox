@@ -38,3 +38,6 @@ Thumbs.db
 
 # PWA service worker output
 dev-dist/
+
+# Vercel
+.vercel/

@@ -13,17 +13,17 @@ export const Topbar: React.FC<TopbarProps> = ({ onMobileMenuToggle }) => {
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
 
   return (
-    <header className="flex min-h-[76px] items-center justify-between border-b border-blackbox-border bg-blackbox-surface/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="flex min-h-[68px] items-center justify-between border-b border-blackbox-border bg-blackbox-surface px-4 sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
-        <button onClick={onMobileMenuToggle} className="rounded-lg p-2 text-blackbox-muted hover:bg-blackbox-panel hover:text-blackbox-text lg:hidden" aria-label="Open navigation menu">
+        <button onClick={onMobileMenuToggle} className="min-h-10 min-w-10 rounded-lg p-2 text-blackbox-muted hover:bg-blackbox-panel hover:text-blackbox-text lg:hidden" aria-label="Open navigation menu">
           <Menu className="h-5 w-5" />
         </button>
-        <button onClick={toggleSidebar} className="hidden rounded-lg p-2 text-blackbox-muted hover:bg-blackbox-panel hover:text-blackbox-text lg:flex" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        <button onClick={toggleSidebar} className="hidden min-h-10 min-w-10 rounded-lg p-2 text-blackbox-muted hover:bg-blackbox-panel hover:text-blackbox-text lg:flex" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed}>
           {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
         <div className="min-w-0">
           <div className="ops-kicker hidden sm:block">BlackBox / Operations console</div>
-          <div className="truncate text-sm font-semibold tracking-wide text-blackbox-text">Operational continuity layer</div>
+          <div className="truncate font-display text-sm font-semibold tracking-wide text-blackbox-text">Operational continuity layer</div>
         </div>
       </div>
 

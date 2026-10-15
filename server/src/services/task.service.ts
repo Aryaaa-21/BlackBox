@@ -13,6 +13,11 @@ import {
 import { getIO } from '../sockets/socket';
 import { missionEventService } from './missionEvent.service';
 
+interface TaskEventMetadata {
+  idempotencyKey?: string;
+  clientCreatedAt?: string;
+}
+
 export class TaskService {
   /**
    * Helper to ensure ID is a valid MongoDB ObjectId
@@ -333,7 +338,8 @@ export class TaskService {
   async updateTask(
     taskId: string,
     commanderId: string,
-    input: UpdateTaskInput
+    input: UpdateTaskInput,
+    eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
     this.validateObjectId(taskId, 'Task ID');
 
@@ -382,6 +388,10 @@ export class TaskService {
         priority: task.priority,
       },
       source: EventSource.USER,
+      clientCreatedAt: eventMetadata?.clientCreatedAt
+        ? new Date(eventMetadata.clientCreatedAt)
+        : undefined,
+      idempotencyKey: eventMetadata?.idempotencyKey,
     });
 
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:updated', {
@@ -468,7 +478,11 @@ export class TaskService {
   /**
    * Unassign task (Commander only, Section 28)
    */
-  async unassignTask(taskId: string, commanderId: string): Promise<ITaskDocument> {
+  async unassignTask(
+    taskId: string,
+    commanderId: string,
+    eventMetadata?: TaskEventMetadata
+  ): Promise<ITaskDocument> {
     this.validateObjectId(taskId, 'Task ID');
 
     const task = await Task.findById(taskId);
@@ -508,6 +522,10 @@ export class TaskService {
         title: task.title,
       },
       source: EventSource.USER,
+      clientCreatedAt: eventMetadata?.clientCreatedAt
+        ? new Date(eventMetadata.clientCreatedAt)
+        : undefined,
+      idempotencyKey: eventMetadata?.idempotencyKey,
     });
 
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:unassigned', {

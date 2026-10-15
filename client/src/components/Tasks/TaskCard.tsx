@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Clock,
   Calendar,
+  Edit3,
 } from 'lucide-react';
 import { Task, TaskStatus, UserRole, MissionMember } from '../../types';
 import { TaskStatusBadge } from './TaskStatusBadge';
@@ -22,6 +23,7 @@ interface TaskCardProps {
   missionMembers: MissionMember[];
   onStatusChange: (taskId: string, status: TaskStatus) => Promise<void>;
   onOpenAssignModal: (task: Task) => void;
+  onOpenEditModal: (task: Task) => void;
   isUpdating?: boolean;
 }
 
@@ -33,6 +35,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   missionMembers,
   onStatusChange,
   onOpenAssignModal,
+  onOpenEditModal,
   isUpdating = false,
 }) => {
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -71,9 +74,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     <div
       className={`rounded-blackbox border p-4 transition-all ${
         task.status === 'ACTIVE'
-          ? 'bg-blackbox-panel border-blackbox-cyan/35 shadow-[0_0_18px_rgba(98,216,232,0.07)]'
+          ? 'bg-blackbox-panel border-blackbox-cyan/35'
           : task.status === 'BLOCKED'
-          ? 'bg-blackbox-panel border-blackbox-warning/35 shadow-[0_0_18px_rgba(231,183,102,0.06)]'
+          ? 'bg-blackbox-panel border-blackbox-warning/35'
           : task.status === 'COMPLETED'
           ? 'bg-blackbox-surface/80 border-blackbox-border opacity-80'
           : 'bg-blackbox-panel/65 border-blackbox-border hover:border-blackbox-borderLight'
@@ -103,14 +106,24 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
         {/* Commander Assignment Controls */}
         {isCommander && task.status !== 'COMPLETED' && (
-          <button
-            onClick={() => onOpenAssignModal(task)}
-            className="text-[11px] font-mono text-zinc-400 hover:text-blackbox-cyan flex items-center gap-1 px-2 py-1 rounded bg-blackbox-surface hover:bg-zinc-800 border border-blackbox-border transition-colors"
-            title="Assign / Reassign operator"
-          >
-            <UserCheck className="w-3 h-3" />
-            <span>{task.assignedTo ? 'REASSIGN' : 'ASSIGN'}</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => onOpenEditModal(task)}
+              className="text-[11px] font-mono text-zinc-400 hover:text-blackbox-cyan flex items-center gap-1 px-2 py-1 rounded bg-blackbox-surface hover:bg-zinc-800 border border-blackbox-border transition-colors"
+              title="Edit task details"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>EDIT</span>
+            </button>
+            <button
+              onClick={() => onOpenAssignModal(task)}
+              className="text-[11px] font-mono text-zinc-400 hover:text-blackbox-cyan flex items-center gap-1 px-2 py-1 rounded bg-blackbox-surface hover:bg-zinc-800 border border-blackbox-border transition-colors"
+              title="Assign / Reassign operator"
+            >
+              <UserCheck className="w-3 h-3" />
+              <span>{task.assignedTo ? 'REASSIGN' : 'ASSIGN'}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -205,7 +218,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               <button
                 onClick={() => handleTransition('COMPLETED')}
                 disabled={isUpdating || actionInProgress !== null}
-                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold border border-emerald-500 disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                className="ops-button-primary px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {actionInProgress === 'COMPLETED' ? (
                   <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />

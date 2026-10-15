@@ -24,10 +24,12 @@ const AppInner: React.FC = () => {
   }, [initializeAuth, initializeOffline]);
 
   return (
-    <>
-      <AppRoutes />
-      {isDemoEnabled && <DemoControls />}
-    </>
+    <div className="min-h-screen w-full bg-blackbox-bg">
+      <div className="flex min-h-screen flex-col">
+        <AppRoutes />
+        {isDemoEnabled && <DemoControls />}
+      </div>
+    </div>
   );
 };
 
@@ -40,4 +42,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

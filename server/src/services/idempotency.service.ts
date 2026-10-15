@@ -9,6 +9,7 @@
  */
 
 import { ProcessedMutation, IProcessedMutationDocument } from '../models/ProcessedMutation';
+import crypto from 'crypto';
 
 interface StoreIdempotencyParams {
   idempotencyKey: string;
@@ -21,7 +22,29 @@ interface StoreIdempotencyParams {
   localId?: string;
   serverId?: string;
   result: Record<string, unknown>;
+  fingerprint?: string;
 }
+
+export interface IdempotencyIdentity {
+  userId: string;
+  deviceId: string;
+  missionId: string;
+  operationType: string;
+  entityType: string;
+  entityId: string;
+  payload: Record<string, unknown>;
+}
+
+export const mutationFingerprint = (identity: IdempotencyIdentity): string =>
+  crypto.createHash('sha256').update(JSON.stringify({
+    userId: identity.userId,
+    deviceId: identity.deviceId,
+    missionId: identity.missionId,
+    operationType: identity.operationType,
+    entityType: identity.entityType,
+    entityId: identity.entityId,
+    payload: Object.fromEntries(Object.entries(identity.payload).sort(([a], [b]) => a.localeCompare(b))),
+  })).digest('hex');
 
 export class IdempotencyService {
   /**
@@ -29,9 +52,22 @@ export class IdempotencyService {
    * Returns the stored result if so, null otherwise.
    */
   async checkIdempotency(
-    idempotencyKey: string
+    idempotencyKey: string,
+    identity?: IdempotencyIdentity
   ): Promise<IProcessedMutationDocument | null> {
-    return ProcessedMutation.findOne({ idempotencyKey }).lean<IProcessedMutationDocument>();
+    const existing = await ProcessedMutation.findOne({ idempotencyKey }).lean<IProcessedMutationDocument>();
+    if (existing && identity) {
+      const sameIdentity = existing.userId === identity.userId &&
+        existing.deviceId === identity.deviceId &&
+        existing.missionId === identity.missionId &&
+        existing.operationType === identity.operationType &&
+        existing.entityType === identity.entityType &&
+        existing.entityId === identity.entityId;
+      if (!sameIdentity || (existing.fingerprint && existing.fingerprint !== mutationFingerprint(identity))) {
+        throw new Error('IDEMPOTENCY_KEY_REUSED');
+      }
+    }
+    return existing;
   }
 
   /**
@@ -53,7 +89,8 @@ export class IdempotencyService {
           entityId: params.entityId,
           localId: params.localId,
           serverId: params.serverId,
-          result: params.result,
+           result: params.result,
+           fingerprint: params.fingerprint,
         },
       },
       { upsert: true, new: true }

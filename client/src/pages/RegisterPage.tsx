@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { AlertCircle, ArrowRight, Check, KeyRound, Loader2, Mail, Shield, UserRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, KeyRound, Mail, User, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../types';
 import { ConnectivityIndicator } from '../components/Connectivity/ConnectivityIndicator';
@@ -8,239 +8,37 @@ import { ConnectivityIndicator } from '../components/Connectivity/ConnectivityIn
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register, isLoading, error, clearError } = useAuthStore();
+  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<UserRole>('FIELD_OPERATOR'); const [clientError, setClientError] = useState<string | null>(null);
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('FIELD_OPERATOR');
-  const [clientError, setClientError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearError();
-    setClientError(null);
-
-    // Client validation
-    if (!name.trim()) {
-      setClientError('Operator name is required');
-      return;
-    }
-
-    if (name.trim().length < 2) {
-      setClientError('Name must be at least 2 characters');
-      return;
-    }
-
-    const emailRegex = /^\S+@\S+\.\S+$/;
-    if (!emailRegex.test(email.trim())) {
-      setClientError('Please provide a valid email format');
-      return;
-    }
-
-    if (password.length < 6) {
-      setClientError('Password must be at least 6 characters long');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setClientError('Security passwords do not match');
-      return;
-    }
-
-    try {
-      await register(name.trim(), email.trim(), password, role);
-      navigate('/dashboard', { replace: true });
-    } catch (err: unknown) {
-      const e = err as { message?: string };
-      setClientError(e.message || 'Registration failed');
-    }
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); clearError(); setClientError(null);
+    if (name.trim().length < 2) { setClientError('Name must be at least 2 characters.'); return; }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setClientError('Enter a valid email address.'); return; }
+    if (password.length < 6) { setClientError('Password must be at least 6 characters.'); return; }
+    if (password !== confirmPassword) { setClientError('Passwords do not match.'); return; }
+    try { await register(name.trim(), email.trim(), password, role); navigate('/dashboard', { replace: true }); }
+    catch (err: unknown) { setClientError((err as { message?: string }).message || 'Registration failed.'); }
   };
 
   const activeError = clientError || error;
-
   return (
-    <div className="min-h-screen bg-blackbox-bg flex flex-col justify-between p-6">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-blackbox-panel border border-blackbox-cyan/40 flex items-center justify-center">
-            <Shield className="w-4 h-4 text-blackbox-cyan" />
-          </div>
-          <span className="font-mono font-bold tracking-wider text-sm text-blackbox-text">BLACKBOX</span>
-        </Link>
-        <ConnectivityIndicator />
-      </div>
-
-      {/* Registration Card */}
-      <div className="w-full max-w-md mx-auto my-8 bg-blackbox-surface border border-blackbox-border rounded-xl p-8 shadow-2xl">
-        <div className="mb-6">
-          <div className="text-[11px] font-mono text-blackbox-cyan uppercase tracking-wider mb-1 font-semibold">
-            ENLISTMENT // NEW OPERATOR
-          </div>
-          <h2 className="text-xl font-bold font-mono text-blackbox-text">Register Credentials</h2>
-          <p className="text-xs text-blackbox-muted mt-1">
-            Establish a verified operational profile on the BlackBox network.
-          </p>
-        </div>
-
-        {activeError && (
-          <div className="mb-5 p-3 rounded-lg bg-rose-950/30 border border-rose-900/60 flex items-start gap-2.5 text-xs text-rose-300">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-            <div>{activeError}</div>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-mono text-blackbox-textSecondary mb-1.5 uppercase tracking-wide">
-              Operator Full Name / Call-Sign
-            </label>
-            <div className="relative">
-              <User className="w-4 h-4 text-blackbox-muted absolute left-3 top-3" />
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Commander Alex Mercer"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-mono text-blackbox-textSecondary mb-1.5 uppercase tracking-wide">
-              Network Email
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-blackbox-muted absolute left-3 top-3" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex.mercer@blackbox.local"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-mono text-blackbox-textSecondary mb-1.5 uppercase tracking-wide">
-              Security Password
-            </label>
-            <div className="relative">
-              <KeyRound className="w-4 h-4 text-blackbox-muted absolute left-3 top-3" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-mono text-blackbox-textSecondary mb-1.5 uppercase tracking-wide">
-              Confirm Security Password
-            </label>
-            <div className="relative">
-              <KeyRound className="w-4 h-4 text-blackbox-muted absolute left-3 top-3" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter password"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-blackbox-panel border border-blackbox-border focus:border-blackbox-cyan focus:outline-none text-sm font-mono text-blackbox-text placeholder:text-blackbox-muted"
-              />
-            </div>
-          </div>
-
-          {/* Role Selection (Section 20) */}
-          <div>
-            <label className="block text-xs font-mono text-blackbox-textSecondary mb-2 uppercase tracking-wide">
-              Operational Role Selection
-            </label>
-            <div className="grid grid-cols-1 gap-2.5">
-              <div
-                onClick={() => setRole('FIELD_OPERATOR')}
-                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                  role === 'FIELD_OPERATOR'
-                    ? 'border-blackbox-cyan bg-cyan-950/30'
-                    : 'border-blackbox-border bg-blackbox-panel hover:border-blackbox-borderLight'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-blackbox-text">FIELD OPERATOR</span>
-                  </div>
-                  {role === 'FIELD_OPERATOR' && <CheckCircle2 className="w-4 h-4 text-blackbox-cyan" />}
-                </div>
-                <p className="text-[11px] text-blackbox-muted mt-1 leading-snug">
-                  Performs assigned field tasks and submits operational updates.
-                </p>
-              </div>
-
-              <div
-                onClick={() => setRole('COMMANDER')}
-                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                  role === 'COMMANDER'
-                    ? 'border-blackbox-cyan bg-cyan-950/30'
-                    : 'border-blackbox-border bg-blackbox-panel hover:border-blackbox-borderLight'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-blackbox-text">COMMANDER</span>
-                  </div>
-                  {role === 'COMMANDER' && <CheckCircle2 className="w-4 h-4 text-blackbox-cyan" />}
-                </div>
-                <p className="text-[11px] text-blackbox-muted mt-1 leading-snug">
-                  Coordinates missions and team operations.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-4 py-2.5 px-4 rounded-lg bg-blackbox-cyan hover:bg-cyan-300 text-black font-mono text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>CREATING ACCOUNT...</span>
-              </>
-            ) : (
-              <>
-                <span>REGISTER & ENTER CONSOLE</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="mt-6 pt-6 border-t border-blackbox-border text-center">
-          <p className="text-xs text-blackbox-muted">
-            Already registered?{' '}
-            <Link to="/login" className="text-blackbox-cyan hover:underline font-mono font-medium">
-              Sign In Here
-            </Link>
-          </p>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="text-center text-[11px] font-mono text-blackbox-muted">
-        BLACKBOX OPERATION SECURITY • RESILIENT OFFLINE-FIRST ARCHITECTURE
-      </div>
+    <div className="min-h-screen bg-blackbox-bg text-blackbox-text">
+      <header className="border-b border-blackbox-border bg-blackbox-surface"><div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8"><Link to="/" className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg border border-blackbox-cyan/60 bg-blackbox-panel text-blackbox-cyan"><Shield className="h-4 w-4" /></span><span className="font-display text-sm font-bold tracking-[0.18em]">BLACKBOX</span></Link><ConnectivityIndicator /></div></header>
+      <main className="mx-auto grid min-h-[calc(100vh-78px)] max-w-6xl items-center gap-12 px-5 py-12 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+        <section className="max-w-md"><div className="ops-kicker text-blackbox-cyan">Operator registration</div><h1 className="mt-3 font-display text-4xl font-bold tracking-[-0.05em] sm:text-5xl">Set up your operating identity.</h1><p className="mt-5 text-base leading-7 text-blackbox-textSecondary">Choose the role that matches your work. Permissions remain enforced by the existing server contract.</p><div className="mt-8 space-y-3 font-mono text-[11px] text-blackbox-muted"><div className="flex gap-3"><span className="text-blackbox-cobalt">01</span><span>Authenticate securely</span></div><div className="flex gap-3"><span className="text-blackbox-cobalt">02</span><span>Join assigned missions</span></div><div className="flex gap-3"><span className="text-blackbox-cobalt">03</span><span>Keep working through interruptions</span></div></div></section>
+        <section className="ops-surface mx-auto w-full max-w-lg p-6 sm:p-8" aria-labelledby="register-heading"><div className="mb-7"><h2 id="register-heading" className="font-display text-2xl font-bold">Create account</h2><p className="mt-2 text-sm text-blackbox-muted">Register a new BlackBox operator.</p></div>
+          {activeError && <div role="alert" className="mb-5 flex items-start gap-2 rounded-lg border border-blackbox-borderLight bg-blackbox-panel p-3 text-sm text-blackbox-textSecondary"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blackbox-warning" /><span>{activeError}</span></div>}
+          <form onSubmit={submit} className="space-y-5">
+            <div><label htmlFor="register-name" className="mb-2 block text-sm font-medium text-blackbox-textSecondary">Name or call sign</label><div className="relative"><UserRound className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-blackbox-muted" /><input id="register-name" required autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} className="ops-control w-full pl-10" placeholder="Alex Mercer" /></div></div>
+            <div><label htmlFor="register-email" className="mb-2 block text-sm font-medium text-blackbox-textSecondary">Email</label><div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-blackbox-muted" /><input id="register-email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="ops-control w-full pl-10" placeholder="operator@blackbox.local" /></div></div>
+            <div className="grid gap-5 sm:grid-cols-2"><div><label htmlFor="register-password" className="mb-2 block text-sm font-medium text-blackbox-textSecondary">Password</label><div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-blackbox-muted" /><input id="register-password" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="ops-control w-full pl-10" placeholder="6+ characters" /></div></div><div><label htmlFor="register-confirm-password" className="mb-2 block text-sm font-medium text-blackbox-textSecondary">Confirm password</label><input id="register-confirm-password" type="password" required minLength={6} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="ops-control w-full" placeholder="Repeat password" /></div></div>
+            <fieldset><legend className="mb-2 block text-sm font-medium text-blackbox-textSecondary">Operating role</legend><div className="grid gap-2 sm:grid-cols-2">{(['FIELD_OPERATOR', 'COMMANDER'] as UserRole[]).map((option) => <button key={option} type="button" onClick={() => setRole(option)} aria-pressed={role === option} className={`flex min-h-16 items-center justify-between rounded-lg border px-3 text-left transition-colors ${role === option ? 'border-blackbox-cyan bg-blackbox-cyan/10' : 'border-blackbox-border bg-blackbox-panel hover:border-blackbox-borderLight'}`}><span><span className="block font-mono text-[11px] font-bold text-blackbox-text">{option === 'COMMANDER' ? 'COMMANDER' : 'FIELD OPERATOR'}</span><span className="mt-1 block text-[11px] text-blackbox-muted">{option === 'COMMANDER' ? 'Create and coordinate missions.' : 'Execute tasks and report observations.'}</span></span>{role === option && <Check className="h-4 w-4 shrink-0 text-blackbox-cobalt" />}</button>)}</div></fieldset>
+            <button type="submit" disabled={isLoading} className="ops-button-primary w-full">{isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Creating account…</> : <>Create account <ArrowRight className="h-4 w-4" /></>}</button>
+          </form>
+          <p className="mt-6 text-center text-sm text-blackbox-muted">Already registered? <Link to="/login" className="font-semibold text-blackbox-cobalt hover:underline">Sign in</Link></p>
+        </section>
+      </main>
     </div>
   );
 };

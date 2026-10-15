@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Activity, Compass, LayoutDashboard, Settings, Shield, User as UserIcon, X } from 'lucide-react';
+import { Compass, LayoutDashboard, Settings, Shield, User as UserIcon, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useAppStore } from '../../store/appStore';
 
@@ -16,21 +16,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
   const navItems = [
     { name: 'Dashboard', detail: 'Operational overview', to: '/dashboard', icon: LayoutDashboard },
     { name: 'Missions', detail: 'Mission directory', to: '/missions', icon: Compass },
-    { name: 'Activity', detail: 'Event history', to: '/missions', icon: Activity },
     { name: 'Settings', detail: 'Account controls', to: '/settings', icon: Settings },
   ];
 
   const content = (
-    <aside className={`flex h-full flex-col border-r border-blackbox-border bg-blackbox-surface/95 transition-all duration-300 z-40 ${sidebarCollapsed ? 'w-[76px]' : 'w-[264px]'}`}>
+      <aside aria-label="Primary navigation" className={`flex h-full flex-col border-r border-blackbox-border bg-blackbox-surface transition-all duration-300 z-40 ${sidebarCollapsed ? 'w-[76px]' : 'w-[264px]'}`}>
       <div>
         <div className="flex h-[76px] items-center justify-between border-b border-blackbox-border px-4">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blackbox-cyan/35 bg-blackbox-panel text-blackbox-cyan shadow-[0_0_18px_rgba(98,216,232,0.12)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blackbox-cyan/35 bg-blackbox-panel text-blackbox-cyan">
               <Shield className="h-[18px] w-[18px]" />
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
-                <div className="font-mono text-sm font-bold tracking-[0.22em] text-blackbox-text">BLACKBOX</div>
+             <div className="font-display text-sm font-bold tracking-[0.22em] text-blackbox-text">BLACKBOX</div>
                 <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blackbox-muted">Resilient operations</div>
               </div>
             )}
@@ -92,8 +91,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
   return (
     <>
       <div className="hidden h-full lg:block">{content}</div>
-      {isMobileOpen && <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={onMobileClose} />}
-      <div className={`fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>{content}</div>
+      {isMobileOpen && <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={onMobileClose} aria-hidden="true" />}
+      <div className={`fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`} aria-hidden={!isMobileOpen}>{content}</div>
     </>
   );
 };

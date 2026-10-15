@@ -110,6 +110,11 @@ router.get('/:missionId/tasks', (req, res, next) =>
 // MISSION EVENT ROUTES (Phase 5)
 // ==========================================
 
+// Record a free-form observation (Commander and active field operators)
+router.post('/:missionId/events/observations', (req, res, next) =>
+  missionEventController.recordObservation(req, res, next)
+);
+
 // List Mission Events (Commander & Active Members, Sections 22, 23, 24, 25)
 router.get('/:missionId/events', (req, res, next) =>
   missionEventController.listEvents(req, res, next)
@@ -130,4 +135,3 @@ router.get('/:missionId/replay', (req, res, next) =>
 );
 
 export default router;
-

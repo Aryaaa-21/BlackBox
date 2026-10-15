@@ -23,9 +23,12 @@ import { mutationQueueRepository } from '../../offline/mutationQueue.repository'
 import { useSyncStore } from '../../store/syncStore';
 import { useConnectivityStore } from '../../store/connectivityStore';
 import { syncRetry } from './syncRetry';
+import { missionEventRepository } from '../../offline/missionEvent.repository';
+import { useMissionEventStore } from '../../store/missionEventStore';
 import type { PendingMutation, MutationStatus } from '../../offline/types';
 import type { OutgoingMutation, SyncResponse, MutationResult } from './syncTypes';
 import type { LocalTask } from '../../offline/types';
+import type { MissionEvent } from '../../types';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -242,24 +245,29 @@ class SyncEngine {
       `${LOG_PREFIX} SYNCED: ${mutation.operationType} / ${mutation.id}`
     );
 
-    // 1. Reconcile local ID → server ID if this was a CREATE
-    if (result.localId && result.serverId && result.localId !== result.serverId) {
-      await this.reconcileLocalId(
-        result.localId,
-        result.serverId,
-        mutation.missionId,
-        result.entity
-      );
-    } else if (result.entity) {
-      // 2. Update cached entity with server-authoritative state
-      await this.updateCachedEntity(result, mutation);
+    // 1. Events use their idempotency key to replace the local placeholder.
+    if (mutation.entityType === 'EVENT') {
+      await this.reconcileLocalEvents(mutation.idempotencyKey, result.entity);
+    } else {
+      // 2. Reconcile local ID → server ID if this was a CREATE
+      if (result.localId && result.serverId && result.localId !== result.serverId) {
+        await this.reconcileLocalId(
+          result.localId,
+          result.serverId,
+          mutation.missionId,
+          result.entity
+        );
+      } else if (result.entity) {
+        // 3. Update cached entity with server-authoritative state
+        await this.updateCachedEntity(result, mutation);
+      }
+
+      // Task local events are linked by the mutation idempotency key.
+      await this.reconcileLocalEvents(mutation.idempotencyKey, result.entity);
     }
 
-    // 3. Remove mutation from queue
+    // 4. Remove mutation from queue
     await mutationQueueRepository.remove(mutation.id);
-
-    // 4. Mark associated local events as synced
-    await this.reconcileLocalEvents(mutation.idempotencyKey, result.serverId || mutation.entityId);
   }
 
   private async handleDuplicate(
@@ -268,8 +276,9 @@ class SyncEngine {
   ): Promise<void> {
     console.log(`${LOG_PREFIX} DUPLICATE: ${mutation.id} — removing from queue`);
 
-    // Reconcile if we got entity back
-    if (result.serverId && mutation.entityId !== result.serverId) {
+    if (mutation.entityType === 'EVENT') {
+      await this.reconcileLocalEvents(mutation.idempotencyKey, result.entity);
+    } else if (result.serverId && mutation.entityId !== result.serverId) {
       await this.reconcileLocalId(mutation.entityId, result.serverId, mutation.missionId, result.entity);
     } else if (result.entity) {
       await this.updateCachedEntity(result, mutation);
@@ -433,10 +442,13 @@ class SyncEngine {
         ? (serverEntity.description as string)
         : undefined,
       priority: (serverEntity.priority as any) || undefined,
+      assignedToId: this.getAssignedToId(serverEntity),
+      assignedToName: this.getAssignedToName(serverEntity),
       updatedAt: (serverEntity.updatedAt as string) || now,
       syncState: 'SYNCED',
       source: 'SERVER',
       cachedAt: now,
+      baseUpdatedAt: (serverEntity.updatedAt as string) || now,
     });
   }
 
@@ -445,7 +457,7 @@ class SyncEngine {
    */
   private async reconcileLocalEvents(
     idempotencyKey: string,
-    _entityId: string
+    serverEntity?: Record<string, unknown>
   ): Promise<void> {
     try {
       const localEvents = await db.missionEvents
@@ -454,10 +466,22 @@ class SyncEngine {
         .toArray();
 
       for (const event of localEvents) {
-        await db.missionEvents.update(event.id, {
-          syncState: 'SYNCED',
-          source: 'SERVER',
-        });
+        if (serverEntity?.eventType) {
+          await missionEventRepository.reconcileServerEvent(
+            idempotencyKey,
+            serverEntity as unknown as MissionEvent
+          );
+          useMissionEventStore.getState().replaceEvent(
+            event.id,
+            serverEntity as unknown as MissionEvent
+          );
+          break;
+        } else {
+          await db.missionEvents.update(event.id, {
+            syncState: 'SYNCED',
+            source: 'SERVER',
+          });
+        }
       }
 
       if (localEvents.length > 0) {
@@ -467,6 +491,23 @@ class SyncEngine {
       // Non-critical — events are display-only
       console.warn(`${LOG_PREFIX} Event reconciliation warning:`, err);
     }
+  }
+
+  private getAssignedToId(serverEntity: Record<string, unknown>): string | null {
+    const assignedTo = serverEntity.assignedTo;
+    if (!assignedTo) return null;
+    if (typeof assignedTo === 'string') return assignedTo;
+    if (typeof assignedTo === 'object') {
+      const record = assignedTo as Record<string, unknown>;
+      return String(record.id ?? record._id ?? '');
+    }
+    return null;
+  }
+
+  private getAssignedToName(serverEntity: Record<string, unknown>): string | null {
+    const assignedTo = serverEntity.assignedTo;
+    if (!assignedTo || typeof assignedTo !== 'object') return null;
+    return String((assignedTo as Record<string, unknown>).name ?? '');
   }
 }
 

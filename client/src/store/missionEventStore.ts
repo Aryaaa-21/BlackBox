@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { MissionEvent, PaginationMeta, ApiError, MissionEventType } from '../types';
 import { missionEventApi } from '../services/missionEventApi';
+import { missionEventRepository } from '../offline/missionEvent.repository';
+import { useOfflineStore } from '../offline/offlineStore';
 
 interface MissionEventState {
   events: MissionEvent[];
@@ -16,6 +18,7 @@ interface MissionEventState {
   fetchEvents: (missionId: string, page?: number) => Promise<void>;
   loadMoreEvents: () => Promise<void>;
   addEvent: (event: MissionEvent) => void;
+  replaceEvent: (localEventId: string, authoritativeEvent: MissionEvent) => void;
   clearEvents: () => void;
   clearError: () => void;
 }
@@ -48,10 +51,13 @@ export const useMissionEventStore = create<MissionEventState>((set, get) => ({
     });
 
     try {
-      const data = await missionEventApi.getMissionEvents(missionId, {
-        page,
-        limit: 50,
-      });
+      const data = page === 1
+        ? await missionEventRepository.fetchAndCache(
+            missionId,
+            useOfflineStore.getState().isOperationallyOnline(),
+            50
+          )
+        : await missionEventApi.getMissionEvents(missionId, { page, limit: 50 });
 
       set((state) => {
         // Merge events ensuring no duplicate IDs (Section 42 & 61)
@@ -117,6 +123,21 @@ export const useMissionEventStore = create<MissionEventState>((set, get) => ({
     );
 
     set({ events: updated });
+  },
+
+  replaceEvent: (localEventId: string, authoritativeEvent: MissionEvent) => {
+    set((state) => {
+      const withoutLocal = state.events.filter(
+        (event) =>
+          event.id !== localEventId &&
+          event.idempotencyKey !== authoritativeEvent.idempotencyKey
+      );
+      return {
+        events: [authoritativeEvent, ...withoutLocal].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ),
+      };
+    });
   },
 
   clearEvents: () => {

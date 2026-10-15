@@ -40,6 +40,8 @@ export class ConflictService {
    * Persist a new conflict record.
    */
   async createConflict(params: CreateConflictParams): Promise<ISyncConflictDocument> {
+    const existing = await SyncConflict.findOne({ idempotencyKey: params.idempotencyKey });
+    if (existing) return existing;
     const conflict = new SyncConflict({
       mutationId: params.mutationId,
       idempotencyKey: params.idempotencyKey,
@@ -152,6 +154,10 @@ export class ConflictService {
       );
     }
 
+    if (resolution === 'MERGE' && user.role !== 'COMMANDER') {
+      throw new AppError('Only commanders may merge conflicting task state', 403, 'MERGE_REQUIRES_COMMANDER');
+    }
+
     let entity: Record<string, unknown> | undefined;
     let newMutation: Record<string, unknown> | undefined;
 
@@ -255,6 +261,29 @@ export class ConflictService {
         localStatus as any
       );
 
+      return updatedTask.toJSON() as Record<string, unknown>;
+    }
+
+    if (conflict.entityType === 'TASK' && conflict.operationType === 'UPDATE_TASK') {
+      const { taskService } = await import('./task.service');
+      const localState = { ...conflict.localState };
+      delete localState.entityId;
+      const updatedTask = await taskService.updateTask(
+        conflict.entityId,
+        user.id,
+        localState as any,
+        { idempotencyKey: `${conflict.id}:resolution` }
+      );
+      return updatedTask.toJSON() as Record<string, unknown>;
+    }
+
+    if (conflict.entityType === 'TASK' && conflict.operationType === 'UNASSIGN_TASK') {
+      const { taskService } = await import('./task.service');
+      const updatedTask = await taskService.unassignTask(
+        conflict.entityId,
+        user.id,
+        { idempotencyKey: `${conflict.id}:resolution` }
+      );
       return updatedTask.toJSON() as Record<string, unknown>;
     }
 

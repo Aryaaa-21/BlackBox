@@ -12,22 +12,22 @@ export const TaskPriorityBadge: React.FC<TaskPriorityBadgeProps> = ({ priority, 
     LOW: {
       label: 'LOW',
       icon: ArrowDown,
-      classes: 'bg-zinc-900 text-zinc-400 border-zinc-700/70',
+      classes: 'bg-blackbox-panel text-blackbox-muted border-blackbox-border',
     },
     MEDIUM: {
       label: 'MEDIUM',
       icon: ArrowUp,
-      classes: 'bg-blue-950/40 text-blue-400 border-blue-800/60',
+      classes: 'bg-blackbox-cyan/10 text-blackbox-cyan border-blackbox-cyan/45',
     },
     HIGH: {
       label: 'HIGH',
       icon: Flame,
-      classes: 'bg-amber-950/50 text-amber-400 border-amber-800/80',
+      classes: 'bg-blackbox-critical/16 text-blackbox-warning border-blackbox-critical/60',
     },
     CRITICAL: {
       label: 'CRITICAL',
       icon: AlertCircle,
-      classes: 'bg-rose-950/60 text-rose-300 border-rose-800 shadow-[0_0_8px_rgba(244,63,94,0.2)]',
+      classes: 'bg-blackbox-critical/25 text-blackbox-textSecondary border-blackbox-critical',
     },
   }[priority];
 

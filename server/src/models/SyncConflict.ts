@@ -47,7 +47,6 @@ const SyncConflictSchema = new Schema<ISyncConflictDocument>(
     idempotencyKey: {
       type: String,
       required: [true, 'idempotencyKey is required'],
-      index: true,
     },
     missionId: {
       type: String,
@@ -144,6 +143,7 @@ const SyncConflictSchema = new Schema<ISyncConflictDocument>(
 SyncConflictSchema.index({ missionId: 1, status: 1 });
 SyncConflictSchema.index({ missionId: 1, actorId: 1, status: 1 });
 SyncConflictSchema.index({ missionId: 1, detectedAt: -1 });
+SyncConflictSchema.index({ idempotencyKey: 1 }, { unique: true });
 
 export const SyncConflict = mongoose.model<ISyncConflictDocument>(
   'SyncConflict',

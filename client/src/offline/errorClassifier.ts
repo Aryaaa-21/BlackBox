@@ -89,5 +89,5 @@ export function isOfflineError(error: unknown): boolean {
   const apiError = error as ApiError;
   if (!apiError?.code) return false;
   const classified = classifyApiError(apiError);
-  return classified.shouldFallbackToLocal || !navigator.onLine;
+  return classified.shouldFallbackToLocal;
 }

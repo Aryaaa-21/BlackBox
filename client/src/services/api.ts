@@ -1,8 +1,15 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiError } from '../types';
 
-// Get API URL from env with fallback
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+// Get API URL from env with fallback (defaults to relative /api/v1 in production if no env set)
+const getDefaultApiUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api/v1';
+  }
+  return 'http://localhost:5000/api/v1';
+};
+
+const API_URL = import.meta.env.VITE_API_URL || getDefaultApiUrl();
 
 export const api = axios.create({
   baseURL: API_URL,

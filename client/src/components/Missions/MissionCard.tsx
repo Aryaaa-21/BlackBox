@@ -33,7 +33,7 @@ export const MissionCard: React.FC<MissionCardProps> = ({ mission }) => {
   return (
     <Link
       to={`/missions/${mission.id}`}
-      className="group block p-5 rounded-xl bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border hover:border-blackbox-cyan/40 transition-all duration-200 shadow-sm hover:shadow-[0_0_15px_rgba(0,210,255,0.06)] relative overflow-hidden"
+      className="group relative block overflow-hidden rounded-xl border border-blackbox-border bg-blackbox-surface p-5 shadow-sm transition-colors duration-200 hover:border-blackbox-cyan/40 hover:bg-blackbox-panel"
     >
       {/* Top Bar: Status + Severity Badges */}
       <div className="flex items-center justify-between gap-2 mb-3">

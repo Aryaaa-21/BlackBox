@@ -14,7 +14,7 @@ import { mutationQueueRepository } from './mutationQueue.repository';
 import { validateTaskTransition } from './validation';
 import { isOfflineError } from './errorClassifier';
 import { taskApi } from '../services/taskApi';
-import type { Task, TaskStatus, TaskPriority } from '../types';
+import type { Task, TaskStatus, TaskPriority, UpdateTaskPayload } from '../types';
 import type { LocalTask, OfflineOperationResult } from './types';
 
 // ============================================================
@@ -344,6 +344,134 @@ export const taskRepository = {
     const updated = await db.tasks.get(taskId);
     return {
       data: localTaskToTask(updated!) as Task,
+      isLocal: true,
+      syncState: 'PENDING',
+      mutationId: mutation.id,
+    };
+  },
+
+  // ============================================================
+  // UPDATE TASK DETAILS
+  // ============================================================
+
+  async updateTask(
+    taskId: string,
+    missionId: string,
+    payload: UpdateTaskPayload,
+    actorId: string,
+    deviceId: string,
+    isOperationallyOnline: boolean
+  ): Promise<OfflineOperationResult<Task>> {
+    const localTask = await db.tasks.get(taskId);
+
+    if (isOperationallyOnline) {
+      try {
+        const updated = await taskApi.updateTask(taskId, payload);
+        await taskRepository.cacheTask(updated, missionId);
+        return { data: updated, isLocal: false, syncState: 'SYNCED' };
+      } catch (err) {
+        if (!isOfflineError(err)) throw err;
+        console.log('[TaskRepo] Server unreachable during updateTask, using offline path');
+      }
+    }
+
+    if (!localTask) throw new Error(`Task ${taskId} not found in local cache`);
+    if (localTask.status === 'COMPLETED') {
+      throw new Error('Completed tasks cannot be edited');
+    }
+
+    const now = new Date().toISOString();
+    const updates: Partial<LocalTask> = {
+      ...(payload.title !== undefined ? { title: payload.title } : {}),
+      ...(payload.description !== undefined ? { description: payload.description } : {}),
+      ...(payload.priority !== undefined ? { priority: payload.priority } : {}),
+      updatedAt: now,
+      cachedAt: now,
+      source: 'LOCAL',
+      syncState: 'PENDING',
+      baseUpdatedAt: localTask.updatedAt,
+    };
+
+    await db.tasks.update(taskId, updates);
+
+    const mutation = mutationQueueRepository.buildMutation({
+      missionId,
+      operationType: 'UPDATE_TASK',
+      entityType: 'TASK',
+      entityId: taskId,
+      payload: { ...payload },
+      actorId,
+      deviceId,
+      baseUpdatedAt: localTask.updatedAt,
+    });
+    await mutationQueueRepository.enqueue(mutation);
+
+    const updatedLocal = { ...localTask, ...updates } as LocalTask;
+    return {
+      data: localTaskToTask(updatedLocal) as Task,
+      isLocal: true,
+      syncState: 'PENDING',
+      mutationId: mutation.id,
+    };
+  },
+
+  // ============================================================
+  // UNASSIGN TASK
+  // ============================================================
+
+  async unassignTask(
+    taskId: string,
+    missionId: string,
+    actorId: string,
+    deviceId: string,
+    isOperationallyOnline: boolean
+  ): Promise<OfflineOperationResult<Task>> {
+    const localTask = await db.tasks.get(taskId);
+
+    if (isOperationallyOnline) {
+      try {
+        const updated = await taskApi.unassignTask(taskId);
+        await taskRepository.cacheTask(updated, missionId);
+        return { data: updated, isLocal: false, syncState: 'SYNCED' };
+      } catch (err) {
+        if (!isOfflineError(err)) throw err;
+        console.log('[TaskRepo] Server unreachable during unassignTask, using offline path');
+      }
+    }
+
+    if (!localTask) throw new Error(`Task ${taskId} not found in local cache`);
+    if (localTask.status === 'COMPLETED') {
+      throw new Error('Completed tasks cannot be unassigned');
+    }
+
+    const now = new Date().toISOString();
+    const updates: Partial<LocalTask> = {
+      assignedToId: null,
+      assignedToName: null,
+      updatedAt: now,
+      cachedAt: now,
+      source: 'LOCAL',
+      syncState: 'PENDING',
+      baseUpdatedAt: localTask.updatedAt,
+    };
+
+    await db.tasks.update(taskId, updates);
+
+    const mutation = mutationQueueRepository.buildMutation({
+      missionId,
+      operationType: 'UNASSIGN_TASK',
+      entityType: 'TASK',
+      entityId: taskId,
+      payload: {},
+      actorId,
+      deviceId,
+      baseUpdatedAt: localTask.updatedAt,
+    });
+    await mutationQueueRepository.enqueue(mutation);
+
+    const updatedLocal = { ...localTask, ...updates } as LocalTask;
+    return {
+      data: localTaskToTask(updatedLocal) as Task,
       isLocal: true,
       syncState: 'PENDING',
       mutationId: mutation.id,

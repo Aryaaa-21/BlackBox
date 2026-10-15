@@ -47,6 +47,13 @@ export class BlackBoxDatabase extends Dexie {
       // DeviceState: single record keyed by deviceId
       deviceState: 'deviceId',
     });
+
+    // Version 2 — index local events by their stable mutation key so a
+    // server acknowledgement can replace the local placeholder without
+    // creating a duplicate in the activity feed.
+    this.version(2).stores({
+      missionEvents: 'id, missionId, source, syncState, idempotencyKey, [missionId+syncState], createdAt',
+    });
   }
 }
 

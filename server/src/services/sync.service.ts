@@ -20,7 +20,7 @@ import { Task } from '../models/Task';
 import { Mission } from '../models/Mission';
 import { MissionMember } from '../models/MissionMember';
 import { AppError } from '../middleware/error.middleware';
-import { idempotencyService } from './idempotency.service';
+import { idempotencyService, mutationFingerprint } from './idempotency.service';
 import { conflictService } from './conflict.service';
 import { missionEventService } from './missionEvent.service';
 import { taskService } from './task.service';
@@ -31,6 +31,8 @@ import {
   EventSource,
 } from '../types';
 import { getIO } from '../sockets/socket';
+import { updateTaskSchema } from '../validators/task.validator';
+import { recordObservationSchema } from '../validators/observation.validator';
 
 // ============================================================
 // TYPES
@@ -82,6 +84,7 @@ export interface SyncSummary {
 const MAX_BATCH_SIZE = 20;
 
 export class SyncService {
+  private readonly inFlightMutations = new Map<string, Promise<MutationResult>>();
   /**
    * Process a batch of pending mutations from a client.
    * Mutations are sorted oldest-first before processing.
@@ -108,7 +111,25 @@ export class SyncService {
       console.log(`[SyncService] Processing ${mutation.operationType} (${mutation.mutationId})`);
 
       try {
-        const result = await this.processMutation(mutation, user, idMap);
+        const existingRun = this.inFlightMutations.get(mutation.idempotencyKey);
+        let result: MutationResult;
+        if (existingRun) {
+          // A lost response can cause two HTTP requests for the same key at
+          // once. Serialize that key so side effects execute only once.
+          result = {
+            ...(await existingRun),
+            mutationId: mutation.mutationId,
+            status: 'DUPLICATE',
+          };
+        } else {
+          const run = this.processMutation(mutation, user, idMap);
+          this.inFlightMutations.set(mutation.idempotencyKey, run);
+          try {
+            result = await run;
+          } finally {
+            this.inFlightMutations.delete(mutation.idempotencyKey);
+          }
+        }
         results.push(result);
 
         // Update idMap from CREATE results
@@ -153,7 +174,15 @@ export class SyncService {
     idMap: Map<string, string>
   ): Promise<MutationResult> {
     // 1. Idempotency check — has this been processed before?
-    const existing = await idempotencyService.checkIdempotency(mutation.idempotencyKey);
+    const existing = await idempotencyService.checkIdempotency(mutation.idempotencyKey, {
+      userId: user.id,
+      deviceId: mutation.deviceId,
+      missionId: mutation.missionId,
+      operationType: mutation.operationType,
+      entityType: mutation.entityType,
+      entityId: mutation.entityId,
+      payload: mutation.payload,
+    });
     if (existing) {
       console.log(`[SyncService] DUPLICATE detected: ${mutation.idempotencyKey}`);
       return {
@@ -209,6 +238,8 @@ export class SyncService {
         return this.handleUnassignTask(mutation, resolvedEntityId, user);
       case 'UPDATE_TASK':
         return this.handleUpdateTask(mutation, resolvedEntityId, user);
+      case 'RECORD_OBSERVATION':
+        return this.handleRecordObservation(mutation, user);
       default:
         return {
           mutationId: mutation.mutationId,
@@ -300,6 +331,15 @@ export class SyncService {
           status: 'FAILED',
           errorCode: 'TASK_NOT_FOUND',
           message: 'Task no longer exists on the server',
+        };
+      }
+      if (serverTask.missionId.toString() !== missionId) {
+        return {
+          mutationId: mutation.mutationId,
+          idempotencyKey: mutation.idempotencyKey,
+          status: 'FAILED',
+          errorCode: 'TASK_MISSION_MISMATCH',
+          message: 'Task does not belong to the target mission',
         };
       }
 
@@ -398,6 +438,16 @@ export class SyncService {
     }
 
     try {
+      const task = await Task.findById(resolvedEntityId);
+      if (!task || task.missionId.toString() !== missionId) {
+        return {
+          mutationId: mutation.mutationId,
+          idempotencyKey: mutation.idempotencyKey,
+          status: 'FAILED',
+          errorCode: 'TASK_MISSION_MISMATCH',
+          message: 'Task does not belong to the target mission',
+        };
+      }
       const updatedTask = await taskService.assignTask(
         resolvedEntityId,
         user.id,
@@ -451,7 +501,24 @@ export class SyncService {
     }
 
     try {
-      const updatedTask = await taskService.unassignTask(resolvedEntityId, user.id);
+      const task = await Task.findById(resolvedEntityId);
+      if (!task || task.missionId.toString() !== missionId) {
+        return {
+          mutationId: mutation.mutationId,
+          idempotencyKey: mutation.idempotencyKey,
+          status: 'FAILED',
+          errorCode: 'TASK_NOT_FOUND',
+          message: 'Task does not belong to the target mission',
+        };
+      }
+
+      const conflict = await this.detectTaskConflict(mutation, resolvedEntityId, {});
+      if (conflict) return conflict;
+
+      const updatedTask = await taskService.unassignTask(resolvedEntityId, user.id, {
+        idempotencyKey: mutation.idempotencyKey,
+        clientCreatedAt: mutation.clientCreatedAt,
+      });
       const entity = updatedTask.toJSON() as Record<string, unknown>;
 
       await idempotencyService.storeResult({
@@ -499,11 +566,40 @@ export class SyncService {
     }
 
     try {
-      const updatedTask = await taskService.updateTask(resolvedEntityId, user.id, {
-        title: payload.title as string | undefined,
-        description: payload.description as string | undefined,
-        priority: payload.priority as any | undefined,
-      });
+      const parsed = updateTaskSchema.safeParse(payload);
+      if (!parsed.success) {
+        return {
+          mutationId: mutation.mutationId,
+          idempotencyKey: mutation.idempotencyKey,
+          status: 'FAILED',
+          errorCode: 'VALIDATION_ERROR',
+          message: parsed.error.errors.map((error) => error.message).join('; '),
+        };
+      }
+
+      const task = await Task.findById(resolvedEntityId);
+      if (!task || task.missionId.toString() !== missionId) {
+        return {
+          mutationId: mutation.mutationId,
+          idempotencyKey: mutation.idempotencyKey,
+          status: 'FAILED',
+          errorCode: 'TASK_NOT_FOUND',
+          message: 'Task does not belong to the target mission',
+        };
+      }
+
+      const conflict = await this.detectTaskConflict(mutation, resolvedEntityId, parsed.data);
+      if (conflict) return conflict;
+
+      const updatedTask = await taskService.updateTask(
+        resolvedEntityId,
+        user.id,
+        parsed.data,
+        {
+          idempotencyKey: mutation.idempotencyKey,
+          clientCreatedAt: mutation.clientCreatedAt,
+        }
+      );
 
       const entity = updatedTask.toJSON() as Record<string, unknown>;
 
@@ -527,6 +623,68 @@ export class SyncService {
         entityType: 'TASK',
         localId: mutation.entityId,
         serverId: resolvedEntityId,
+        entity,
+      };
+    } catch (err: unknown) {
+      return this.errorToResult(mutation, err as Error);
+    }
+  }
+
+  private async handleRecordObservation(
+    mutation: IncomingMutation,
+    user: UserPayload
+  ): Promise<MutationResult> {
+    const parsed = recordObservationSchema.safeParse({
+      ...(mutation.payload || {}),
+      idempotencyKey: mutation.idempotencyKey,
+      clientCreatedAt: mutation.clientCreatedAt,
+    });
+    if (!parsed.success || mutation.entityType !== 'EVENT') {
+      return {
+        mutationId: mutation.mutationId,
+        idempotencyKey: mutation.idempotencyKey,
+        status: 'FAILED',
+        errorCode: 'VALIDATION_ERROR',
+        message: parsed.success
+          ? 'Observation mutations must use entityType EVENT'
+          : parsed.error.errors.map((error) => error.message).join('; '),
+      };
+    }
+
+    try {
+      const event = await missionEventService.createMissionEvent({
+        missionId: mutation.missionId,
+        actorId: user.id,
+        eventType: MissionEventType.OBSERVATION_RECORDED,
+        targetType: EventTargetType.OBSERVATION,
+        payload: { text: parsed.data.text },
+        source: EventSource.USER,
+        clientCreatedAt: new Date(mutation.clientCreatedAt),
+        idempotencyKey: mutation.idempotencyKey,
+      });
+      const entity = event.toJSON() as Record<string, unknown>;
+      const serverId = event._id.toString();
+
+      await idempotencyService.storeResult({
+        idempotencyKey: mutation.idempotencyKey,
+        userId: user.id,
+        deviceId: mutation.deviceId,
+        missionId: mutation.missionId,
+        operationType: mutation.operationType,
+        entityType: mutation.entityType,
+        entityId: mutation.entityId,
+        localId: mutation.entityId,
+        serverId,
+        result: entity,
+      });
+
+      return {
+        mutationId: mutation.mutationId,
+        idempotencyKey: mutation.idempotencyKey,
+        status: 'SYNCED',
+        entityType: 'EVENT',
+        localId: mutation.entityId,
+        serverId,
         entity,
       };
     } catch (err: unknown) {
@@ -558,6 +716,49 @@ export class SyncService {
     } catch {
       return false;
     }
+  }
+
+  private async detectTaskConflict(
+    mutation: IncomingMutation,
+    taskId: string,
+    localState: Record<string, unknown>
+  ): Promise<MutationResult | null> {
+    if (!mutation.baseUpdatedAt) return null;
+
+    const serverTask = await Task.findById(taskId);
+    if (!serverTask) return null;
+
+    const serverMs = new Date(serverTask.updatedAt).getTime();
+    const baseMs = new Date(mutation.baseUpdatedAt).getTime();
+    if (serverMs <= baseMs + 1000) return null;
+
+    const conflict = await conflictService.createConflict({
+      mutationId: mutation.mutationId,
+      idempotencyKey: mutation.idempotencyKey,
+      missionId: mutation.missionId,
+      entityType: 'TASK',
+      entityId: taskId,
+      operationType: mutation.operationType,
+      actorId: mutation.actorId,
+      deviceId: mutation.deviceId,
+      localState: { ...localState, entityId: taskId },
+      serverState: serverTask.toJSON() as Record<string, unknown>,
+      baseState: { updatedAt: mutation.baseUpdatedAt },
+    });
+
+    return {
+      mutationId: mutation.mutationId,
+      idempotencyKey: mutation.idempotencyKey,
+      status: 'CONFLICT',
+      entityType: 'TASK',
+      localId: mutation.entityId,
+      serverId: taskId,
+      conflict: {
+        conflictId: conflict.id,
+        localState: { ...localState },
+        serverState: serverTask.toJSON() as Record<string, unknown>,
+      },
+    };
   }
 
   private errorToResult(mutation: IncomingMutation, err: Error): MutationResult {

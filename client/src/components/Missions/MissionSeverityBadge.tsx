@@ -15,26 +15,26 @@ export const MissionSeverityBadge: React.FC<MissionSeverityBadgeProps> = ({
     LOW: {
       label: 'LOW',
       icon: Shield,
-      classes: 'bg-zinc-800/60 text-zinc-300 border-zinc-700/60',
-      iconClasses: 'text-zinc-400',
+      classes: 'bg-blackbox-panel text-blackbox-textSecondary border-blackbox-border',
+      iconClasses: 'text-blackbox-muted',
     },
     MEDIUM: {
       label: 'MEDIUM',
       icon: AlertCircle,
-      classes: 'bg-amber-950/40 text-amber-300 border-amber-800/60',
-      iconClasses: 'text-amber-400',
+      classes: 'bg-blackbox-cyan/10 text-blackbox-info border-blackbox-cyan/45',
+      iconClasses: 'text-blackbox-info',
     },
     HIGH: {
       label: 'HIGH',
       icon: AlertTriangle,
-      classes: 'bg-orange-950/50 text-orange-300 border-orange-700/60',
-      iconClasses: 'text-orange-400',
+      classes: 'bg-blackbox-critical/15 text-blackbox-textSecondary border-blackbox-critical/55',
+      iconClasses: 'text-blackbox-warning',
     },
     CRITICAL: {
       label: 'CRITICAL',
       icon: ShieldAlert,
-      classes: 'bg-red-950/60 text-red-300 border-red-700 shadow-[0_0_10px_rgba(239,68,68,0.25)] font-bold',
-      iconClasses: 'text-red-400',
+      classes: 'bg-blackbox-critical/25 text-blackbox-text border-blackbox-critical font-bold',
+      iconClasses: 'text-blackbox-critical',
     },
   }[severity];
 

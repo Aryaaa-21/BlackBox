@@ -18,6 +18,7 @@ import { demoNetworkController, SimulatedNetworkMode } from '../../services/demo
 import { useAuthStore } from '../../store/authStore';
 import { useOfflineStore } from '../../offline/offlineStore';
 import { useSyncStore } from '../../store/syncStore';
+import { SmokyButton } from '../ui/smoky-button';
 
 export const DemoControls: React.FC = () => {
   const navigate = useNavigate();
@@ -345,6 +346,34 @@ export const DemoControls: React.FC = () => {
                   {isSyncing ? 'SYNCING...' : 'IDLE'}
                 </span>
               </div>
+            </div>
+
+            {/* Tactical Smoky Action (Emergency Crimson) */}
+            <div className="border-t border-slate-800/80 pt-3 space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                <span className="font-mono text-[10px] tracking-wider text-rose-400 font-semibold">TACTICAL PROTOCOL</span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/demo/smoky-button')}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-mono"
+                >
+                  Full Demo ↗
+                </button>
+              </div>
+              <SmokyButton
+                colors={{
+                  primary: '#002FA7',
+                  secondary: '#5C331F',
+                  shadow: '#050506',
+                }}
+                status="OFFLINE"
+                speed={1.25}
+                onClick={handleSimulateOffline}
+                disabled={isLoading || networkMode === 'OFFLINE'}
+                className="w-full py-2 px-3 text-xs justify-center"
+              >
+                <span>Trigger Tactical Crisis</span>
+              </SmokyButton>
             </div>
 
             {/* Reset Demo State Button */}

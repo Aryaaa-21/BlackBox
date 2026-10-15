@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, Radio } from 'lucide-react';
 import { useConnectivityStore } from '../../store/connectivityStore';
 
@@ -10,16 +10,26 @@ export const ConnectivityIndicator: React.FC = () => {
     useConnectivityStore();
   const isSyncing = useSyncStore((s) => s.isSyncing);
   const conflicts = useSyncStore((s) => s.conflicts);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isOpen]);
 
   const getStatusConfig = () => {
     // 1. Conflict priority
     if (conflicts.length > 0) {
       return {
         label: `CONFLICT (${conflicts.length})`,
-        dotColor: 'bg-rose-500 animate-pulse shadow-[0_0_8px_#F43F5E]',
-        textColor: 'text-rose-400',
-        borderColor: 'border-rose-800/60',
-        bgColor: 'bg-rose-950/30',
+         dotColor: 'bg-blackbox-critical animate-pulse',
+         textColor: 'text-blackbox-textSecondary',
+         borderColor: 'border-blackbox-critical/70',
+         bgColor: 'bg-blackbox-critical/15',
         icon: AlertTriangle,
       };
     }
@@ -28,10 +38,10 @@ export const ConnectivityIndicator: React.FC = () => {
     if (isSyncing) {
       return {
         label: 'SYNCING',
-        dotColor: 'bg-cyan-400 animate-ping shadow-[0_0_8px_#22D3EE]',
-        textColor: 'text-cyan-400',
-        borderColor: 'border-cyan-800/60',
-        bgColor: 'bg-cyan-950/30',
+         dotColor: 'bg-blackbox-cyan animate-ping',
+         textColor: 'text-blackbox-cyan',
+         borderColor: 'border-blackbox-cyan/60',
+         bgColor: 'bg-blackbox-cyan/15',
         icon: RefreshCw,
       };
     }
@@ -41,7 +51,7 @@ export const ConnectivityIndicator: React.FC = () => {
       case 'ONLINE':
         return {
           label: 'LIVE',
-          dotColor: 'bg-blackbox-success shadow-[0_0_8px_#10B981]',
+         dotColor: 'bg-blackbox-success',
           textColor: 'text-blackbox-success',
           borderColor: 'border-emerald-900/50',
           bgColor: 'bg-emerald-950/20',
@@ -50,7 +60,7 @@ export const ConnectivityIndicator: React.FC = () => {
       case 'RECONNECTING':
         return {
           label: 'DEGRADED',
-          dotColor: 'bg-blackbox-warning animate-pulse shadow-[0_0_8px_#F59E0B]',
+         dotColor: 'bg-blackbox-warning animate-pulse',
           textColor: 'text-blackbox-warning',
           borderColor: 'border-amber-900/50',
           bgColor: 'bg-amber-950/20',
@@ -60,7 +70,7 @@ export const ConnectivityIndicator: React.FC = () => {
       default:
         return {
           label: 'OFFLINE',
-          dotColor: 'bg-blackbox-critical shadow-[0_0_8px_#EF4444]',
+         dotColor: 'bg-blackbox-critical',
           textColor: 'text-blackbox-critical',
           borderColor: 'border-rose-900/50',
           bgColor: 'bg-rose-950/20',
@@ -73,12 +83,16 @@ export const ConnectivityIndicator: React.FC = () => {
   const Icon = config.icon;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="relative flex items-center gap-2">
       {/* Pill Badge */}
-      <div
+      <button
+        type="button"
         className={`flex items-center gap-2 px-2.5 py-1 rounded-full border ${config.borderColor} ${config.bgColor} backdrop-blur-sm transition-all duration-200 group relative cursor-pointer`}
-        onClick={() => checkServerHealth()}
+        onClick={() => { setIsOpen((open) => !open); void checkServerHealth(); }}
         title="Click to re-check connectivity"
+        aria-label={`Connectivity: ${config.label}. Check connection details.`}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
       >
         <span className={`w-2 h-2 rounded-full ${config.dotColor}`} />
         <Icon className={`w-3.5 h-3.5 ${config.textColor} ${status === 'RECONNECTING' ? 'animate-spin' : ''}`} />
@@ -93,8 +107,10 @@ export const ConnectivityIndicator: React.FC = () => {
           </span>
         )}
 
-        {/* Dropdown status hover card */}
-        <div className="absolute right-0 top-full mt-3 w-72 rounded-xl border border-blackbox-border bg-blackbox-elevated p-4 shadow-blackbox-panel opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-none">
+      </button>
+
+      {/* Dropdown status detail is a sibling of the button so the control remains semantic. */}
+      {isOpen && <div role="dialog" aria-label="Connectivity details" className="absolute right-0 top-full mt-3 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-blackbox-border bg-blackbox-elevated p-4 text-left shadow-blackbox-panel z-50 animate-fade-in">
           <div className="mb-3 flex items-center justify-between text-[10px] font-mono font-semibold uppercase tracking-[0.14em] text-blackbox-textSecondary">
             <span>Link Telemetry</span>
             <Radio className="w-3 h-3 text-blackbox-cyan" />
@@ -125,8 +141,7 @@ export const ConnectivityIndicator: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
+      </div>}
     </div>
   );
 };

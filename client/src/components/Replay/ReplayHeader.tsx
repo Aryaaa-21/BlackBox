@@ -26,18 +26,18 @@ export const ReplayHeader: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Top Banner Notice */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-xs">
+      <div className="flex flex-col gap-3 rounded-lg border border-blackbox-borderLight bg-blackbox-panel p-3 font-mono text-xs text-blackbox-textSecondary sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <History className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
-          <span className="font-bold tracking-wider">HISTORICAL REPLAY MODE // READ ONLY</span>
-          <span className="hidden md:inline text-amber-400/60">·</span>
-          <span className="hidden md:inline text-amber-200/80">
+          <History className="w-4 h-4 shrink-0 text-blackbox-warning" />
+          <span className="font-bold tracking-wider text-blackbox-text">Historical replay / read only</span>
+          <span className="hidden md:inline text-blackbox-muted">·</span>
+          <span className="hidden md:inline text-blackbox-muted">
             Reconstructing past operational state from immutable mission event logs. Real state is not affected.
           </span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40">
+            <span className="rounded border border-blackbox-borderLight bg-blackbox-elevated px-2 py-0.5 font-semibold text-blackbox-text">
             REPLAY TIME: {formattedCurrentTime}
           </span>
         </div>
@@ -57,12 +57,12 @@ export const ReplayHeader: React.FC = () => {
 
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-semibold">
-                TACTICAL TIMELINE // REPLAY
+              <span className="h-2 w-2 rounded-full bg-blackbox-cyan" />
+              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-blackbox-cyan">
+                Timeline / replay
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold font-mono text-blackbox-text mt-0.5 line-clamp-1">
+              <h1 className="mt-0.5 line-clamp-1 font-display text-xl font-bold text-blackbox-text sm:text-2xl">
               {mission?.title || 'Mission Operations Replay'}
             </h1>
           </div>
@@ -70,8 +70,8 @@ export const ReplayHeader: React.FC = () => {
 
         {/* Operational Telemetry Summary Chips */}
         <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
-          <div className="px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="flex items-center gap-1.5 rounded-lg border border-blackbox-border bg-blackbox-surface px-3 py-1.5 text-blackbox-muted">
+              <Activity className="h-3.5 w-3.5 text-blackbox-cobalt" />
             <span>Progress:</span>
             <span className="text-blackbox-text font-bold">
               {total > 0 ? `${currentIndex + 1} / ${total}` : '0 / 0'}
@@ -79,8 +79,8 @@ export const ReplayHeader: React.FC = () => {
           </div>
 
           {summary?.durationFormatted && (
-            <div className="px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="flex items-center gap-1.5 rounded-lg border border-blackbox-border bg-blackbox-surface px-3 py-1.5 text-blackbox-muted">
+              <Clock className="h-3.5 w-3.5 text-blackbox-cobalt" />
               <span>Duration:</span>
               <span className="text-blackbox-text font-bold">{summary.durationFormatted}</span>
             </div>
@@ -88,15 +88,11 @@ export const ReplayHeader: React.FC = () => {
 
           <div className="px-3 py-1.5 rounded-lg bg-blackbox-surface border border-blackbox-border text-blackbox-muted flex items-center gap-1.5">
             <Radio
-              className={`w-3.5 h-3.5 ${
-                reconstructedState.connectivity === 'ONLINE' ? 'text-emerald-400' : 'text-amber-400'
-              }`}
+              className="h-3.5 w-3.5 text-blackbox-cobalt"
             />
             <span>Channel:</span>
             <span
-              className={`font-bold ${
-                reconstructedState.connectivity === 'ONLINE' ? 'text-emerald-400' : 'text-amber-400'
-              }`}
+              className="font-bold text-blackbox-cobalt"
             >
               {reconstructedState.connectivity}
             </span>

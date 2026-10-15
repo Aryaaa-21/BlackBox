@@ -61,8 +61,8 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-lg mx-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation">
+      <div role="dialog" aria-modal="true" aria-labelledby="conflict-dialog-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl sm:p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-5">
           <div>
@@ -72,7 +72,7 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
                 {entityLabel} Conflict
               </span>
             </div>
-            <h2 className="text-white text-lg font-bold">
+            <h2 id="conflict-dialog-title" className="text-white text-lg font-bold">
               {serverState?.title || localState?.title || 'Unnamed Task'}
             </h2>
             <p className="text-slate-400 text-xs mt-1">
@@ -81,14 +81,15 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
           </div>
           <button
             onClick={onDismiss}
-            className="text-slate-500 hover:text-white transition-colors ml-4 text-xl leading-none"
+            className="min-h-10 min-w-10 rounded-lg text-slate-500 hover:bg-slate-800 hover:text-white transition-colors ml-4 text-xl leading-none"
+            aria-label="Close conflict dialog"
           >
             ×
           </button>
         </div>
 
         {/* Comparison */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Your change */}
           <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-4">
             <div className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">
@@ -152,7 +153,7 @@ export const ConflictDialog: React.FC<ConflictDialogProps> = ({
           <p className="text-xs text-slate-500 mb-3">
             Choose which version to keep. This cannot be undone.
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button
               onClick={() => handleResolve('KEEP_SERVER')}
               disabled={resolving}

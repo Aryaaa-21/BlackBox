@@ -20,6 +20,7 @@ export interface IProcessedMutationDocument extends Document {
   localId?: string;
   serverId?: string;
   result: Record<string, unknown>;
+  fingerprint?: string;
   createdAt: Date;
 }
 
@@ -69,6 +70,7 @@ const ProcessedMutationSchema = new Schema<IProcessedMutationDocument>(
       type: Schema.Types.Mixed,
       default: {},
     },
+    fingerprint: { type: String, index: true },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

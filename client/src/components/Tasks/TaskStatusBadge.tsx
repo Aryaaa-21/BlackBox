@@ -12,22 +12,22 @@ export const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({ status, size =
     PENDING: {
       label: 'PENDING',
       icon: Clock,
-      classes: 'bg-zinc-900 text-zinc-400 border-zinc-700/80',
+      classes: 'bg-blackbox-panel text-blackbox-muted border-blackbox-border',
     },
     ACTIVE: {
       label: 'ACTIVE',
       icon: Play,
-      classes: 'bg-cyan-950/60 text-cyan-400 border-cyan-800/90 shadow-[0_0_8px_rgba(6,182,212,0.15)]',
+      classes: 'bg-blackbox-cyan/15 text-blackbox-cyan border-blackbox-cyan/55',
     },
     BLOCKED: {
       label: 'BLOCKED',
       icon: AlertOctagon,
-      classes: 'bg-amber-950/60 text-amber-400 border-amber-800/90 shadow-[0_0_8px_rgba(245,158,11,0.15)]',
+      classes: 'bg-blackbox-critical/20 text-blackbox-warning border-blackbox-critical/65',
     },
     COMPLETED: {
       label: 'COMPLETED',
       icon: CheckCircle2,
-      classes: 'bg-emerald-950/60 text-emerald-400 border-emerald-800/90 shadow-[0_0_8px_rgba(16,185,129,0.15)]',
+      classes: 'bg-blackbox-cyan/20 text-blackbox-info border-blackbox-cyan/60',
     },
   }[status];
 

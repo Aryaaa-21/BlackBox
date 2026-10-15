@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { taskApi } from '../services/taskApi';
 import { taskRepository } from '../offline/task.repository';
+import { useAuthStore } from './authStore';
+import { useOfflineStore } from '../offline/offlineStore';
 
 interface TaskState {
   tasks: Task[];
@@ -73,7 +75,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       const activeFilters = customFilters || get().filters;
       const result = await taskApi.getMissionTasks(missionId, activeFilters);
       // Phase 6: cache tasks in IndexedDB for offline access
-      taskRepository.cacheTasks(result.tasks, missionId).catch(() => {});
+      await taskRepository.cacheTasks(result.tasks, missionId).catch(() => {});
       set({
         tasks: result.tasks,
         stats: result.stats,
@@ -149,18 +151,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   updateTask: async (taskId: string, payload: UpdateTaskPayload) => {
     set({ isUpdating: true, error: null });
     try {
-      const updated = await taskApi.updateTask(taskId, payload);
-      set((state) => {
-        const tasks = state.tasks.map((t) => (t.id === taskId ? updated : t));
-        const myTasks = state.myTasks.map((t) => (t.id === taskId ? updated : t));
-        return {
-          tasks,
-          myTasks,
-          selectedTask: state.selectedTask?.id === taskId ? updated : state.selectedTask,
-          isUpdating: false,
-        };
-      });
-      return updated;
+      const currentTask = get().tasks.find((task) => task.id === taskId);
+      const user = useAuthStore.getState().user;
+      if (!currentTask || !user) throw new Error('Task or authenticated operator is unavailable.');
+      const missionId = typeof currentTask.missionId === 'string'
+        ? currentTask.missionId
+        : currentTask.missionId.id;
+      const result = await taskRepository.updateTask(
+        taskId,
+        missionId,
+        payload,
+        user.id,
+        useOfflineStore.getState().deviceId,
+        useOfflineStore.getState().isOperationallyOnline()
+      );
+      get().handleTaskUpdated(result.data);
+      if (result.isLocal) await useOfflineStore.getState().refreshPendingCountForMission(missionId);
+      set({ isUpdating: false });
+      return result.data;
     } catch (err: unknown) {
       const error = err as ApiError;
       set({
@@ -199,18 +207,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   unassignTask: async (taskId: string) => {
     set({ isUpdating: true, error: null });
     try {
-      const updated = await taskApi.unassignTask(taskId);
-      set((state) => {
-        const tasks = state.tasks.map((t) => (t.id === taskId ? updated : t));
-        const myTasks = state.myTasks.filter((t) => t.id !== taskId);
-        return {
-          tasks,
-          myTasks,
-          selectedTask: state.selectedTask?.id === taskId ? updated : state.selectedTask,
-          isUpdating: false,
-        };
-      });
-      return updated;
+      const currentTask = get().tasks.find((task) => task.id === taskId);
+      const user = useAuthStore.getState().user;
+      if (!currentTask || !user) throw new Error('Task or authenticated operator is unavailable.');
+      const missionId = typeof currentTask.missionId === 'string'
+        ? currentTask.missionId
+        : currentTask.missionId.id;
+      const result = await taskRepository.unassignTask(
+        taskId,
+        missionId,
+        user.id,
+        useOfflineStore.getState().deviceId,
+        useOfflineStore.getState().isOperationallyOnline()
+      );
+      get().handleTaskUnassigned(result.data);
+      if (result.isLocal) await useOfflineStore.getState().refreshPendingCountForMission(missionId);
+      set({ isUpdating: false });
+      return result.data;
     } catch (err: unknown) {
       const error = err as ApiError;
       set({

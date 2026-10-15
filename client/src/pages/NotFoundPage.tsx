@@ -1,29 +1,10 @@
 import React from 'react';
+import { ArrowLeft, Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { AlertOctagon, ArrowLeft } from 'lucide-react';
 
-export const NotFoundPage: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-blackbox-bg flex flex-col items-center justify-center p-6 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-blackbox-panel border border-rose-900/60 text-blackbox-critical flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
-        <AlertOctagon className="w-8 h-8" />
-      </div>
-      <div className="text-xs font-mono text-blackbox-critical uppercase tracking-widest mb-1">
-        ERROR // 404
-      </div>
-      <h1 className="text-3xl font-mono font-bold text-blackbox-text mb-2">
-        Operational Coordinate Not Found
-      </h1>
-      <p className="text-xs text-blackbox-muted max-w-sm mb-8">
-        The requested system path does not exist in the BlackBox routing ledger.
-      </p>
-      <Link
-        to="/"
-        className="px-4 py-2 rounded-lg bg-blackbox-surface hover:bg-blackbox-panel border border-blackbox-border text-xs font-mono text-blackbox-text flex items-center gap-2 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Return to Safe Coordinate</span>
-      </Link>
-    </div>
-  );
-};
+export const NotFoundPage: React.FC = () => (
+  <div className="min-h-screen bg-blackbox-bg text-blackbox-text">
+    <header className="border-b border-blackbox-border bg-blackbox-surface"><div className="mx-auto max-w-6xl px-5 py-5 sm:px-8"><Link to="/" className="font-display text-sm font-bold tracking-[0.18em]">BLACKBOX</Link></div></header>
+    <main className="mx-auto grid min-h-[calc(100vh-72px)] max-w-6xl place-items-center px-5 py-12 sm:px-8"><section className="ops-surface w-full max-w-xl p-8 sm:p-10"><div className="ops-kicker text-blackbox-warning">Route unavailable / 404</div><h1 className="mt-3 font-display text-4xl font-bold tracking-[-0.05em]">This coordinate is empty.</h1><p className="mt-4 max-w-md text-sm leading-6 text-blackbox-textSecondary">The requested path is not part of the BlackBox operational workspace.</p><Link to="/" className="ops-button-primary mt-8"><ArrowLeft className="h-4 w-4" />Return to landing</Link><div className="mt-10 flex items-center gap-2 border-t border-blackbox-border pt-4 font-mono text-[10px] text-blackbox-muted"><Compass className="h-3.5 w-3.5" />Check the mission directory or return to the console.</div></section></main>
+  </div>
+);

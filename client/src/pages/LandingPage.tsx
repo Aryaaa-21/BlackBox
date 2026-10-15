@@ -1,15 +1,16 @@
-/**
- * Phase 9 — Product Polish & Hackathon Demo
- * Landing Page — First impression operational overview.
- * Immediate 30-second understanding of the BlackBox value proposition.
- */
-
 import React, { useState } from 'react';
+import { Activity, ArrowRight, History, Layers3, Radio, RefreshCw, Shield } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, ArrowRight, Radio, RefreshCw, Layers, History, Activity } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { ConnectivityIndicator } from '../components/Connectivity/ConnectivityIndicator';
 import { demoApi } from '../services/demoApi';
+
+const capabilities = [
+  { icon: Radio, title: 'Coordinate live', copy: 'Mission rooms, task ownership, and Socket.IO updates stay in one operational view.' },
+  { icon: Layers3, title: 'Keep working offline', copy: 'IndexedDB keeps the working set available and queues supported changes locally.' },
+  { icon: RefreshCw, title: 'Reconcile explicitly', copy: 'Sync status, pending mutations, and conflicts remain visible when the link returns.' },
+  { icon: History, title: 'Review the record', copy: 'Replay the chronological mission event stream to understand what changed and when.' },
+];
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -19,179 +20,112 @@ export const LandingPage: React.FC = () => {
   const handleLaunchDemo = async () => {
     setIsLaunchingDemo(true);
     try {
-      const res = await demoApi.resetDemo();
-      const commanderCreds = res.demoUsers.find((u) => u.role === 'COMMANDER');
-      if (commanderCreds) {
-        await login(commanderCreds.email, commanderCreds.password);
-      }
-      if (res.demoMission?.id) {
-        navigate(`/missions/${res.demoMission.id}`);
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      console.error('Failed to launch demo from landing page:', err);
+      const result = await demoApi.resetDemo();
+      const commander = result.demoUsers.find((candidate) => candidate.role === 'COMMANDER');
+      if (commander) await login(commander.email, commander.password);
+      navigate(result.demoMission?.id ? `/missions/${result.demoMission.id}` : '/dashboard');
+    } catch (error) {
+      console.error('Failed to launch demo from landing page:', error);
       navigate('/login');
     } finally {
       setIsLaunchingDemo(false);
     }
   };
 
-  const scrollToHowItWorks = () => {
-    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   return (
-    <div className="min-h-screen bg-blackbox-bg text-blackbox-text ops-grid selection:bg-blackbox-cyan selection:text-black">
-      {/* Header */}
-      <header className="border-b border-blackbox-border/80 bg-blackbox-surface/80 px-6 py-4 backdrop-blur-xl flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded bg-blackbox-panel border border-blackbox-cyan/40 flex items-center justify-center shadow-[0_0_12px_rgba(0,210,255,0.25)]">
-            <Shield className="w-5 h-5 text-blackbox-cyan" />
-          </div>
-          <div>
-            <span className="font-mono font-bold tracking-widest text-base">BLACKBOX</span>
-            <span className="text-[10px] font-mono text-blackbox-muted block uppercase tracking-tight">
-              Resilient Operations Platform
+    <div className="min-h-screen bg-blackbox-bg text-blackbox-text">
+      <header className="border-b border-blackbox-border bg-blackbox-surface">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <Link to="/" className="flex items-center gap-3" aria-label="BlackBox home">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-blackbox-cyan/60 bg-blackbox-panel text-blackbox-cyan">
+              <Shield className="h-5 w-5" aria-hidden="true" />
             </span>
+            <span>
+              <span className="block font-display text-sm font-bold tracking-[0.18em]">BLACKBOX</span>
+              <span className="mt-0.5 block text-[11px] text-blackbox-muted">Continuity for field operations</span>
+            </span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <ConnectivityIndicator />
+            {isAuthenticated ? (
+              <Link to="/dashboard" className="ops-button-primary"><span>Open console</span><ArrowRight className="h-4 w-4" /></Link>
+            ) : (
+              <div className="hidden items-center gap-2 sm:flex">
+                <Link to="/login" className="ops-button-quiet">Sign in</Link>
+                <Link to="/register" className="ops-button-primary">Create account</Link>
+              </div>
+            )}
           </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <ConnectivityIndicator />
-          {isAuthenticated ? (
-            <Link
-              to="/dashboard"
-              className="px-4 py-2 rounded-lg bg-blackbox-cyan text-black font-mono text-xs font-bold hover:bg-cyan-300 transition-colors flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,210,255,0.25)]"
-            >
-              <span>ENTER OPERATIONS</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link
-                to="/login"
-                className="px-3.5 py-1.5 rounded-lg border border-blackbox-border text-blackbox-text hover:bg-blackbox-panel font-mono text-xs transition-colors"
-              >
-                SIGN IN
-              </Link>
-              <button
-                onClick={handleLaunchDemo}
-                disabled={isLaunchingDemo}
-                className="px-3.5 py-1.5 rounded-lg bg-blackbox-cyan text-black font-mono text-xs font-bold hover:bg-cyan-300 transition-colors flex items-center gap-1 shadow-[0_0_10px_rgba(0,210,255,0.3)]"
-              >
-                <span>{isLaunchingDemo ? 'PREPARING...' : 'LIVE DEMO'}</span>
-              </button>
-            </div>
-          )}
         </div>
       </header>
 
-      {/* Hero Section */}
-      <main className="mx-auto flex min-h-[calc(100vh-148px)] max-w-6xl flex-col justify-center px-6 py-16">
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-blackbox-cyan/25 bg-blackbox-cyan/10 px-3 py-1 text-[10px] font-mono font-semibold uppercase tracking-[0.16em] text-blackbox-cyan">
-          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-          <span>MISSION-CRITICAL OFFLINE-FIRST OPERATIONS</span>
-        </div>
-
-        <h1 className="mt-7 max-w-4xl text-4xl font-semibold leading-[1.08] tracking-tight text-blackbox-text sm:text-6xl">
-          The network can fail. <br />
-          <span className="text-blackbox-cyan">
-            The operation shouldn&apos;t.
-          </span>
-        </h1>
-
-        <p className="mt-7 max-w-2xl text-sm leading-7 text-blackbox-textSecondary sm:text-base">
-          Keep command centers and field operators coordinated when connectivity disappears.
-          Execute tasks locally in IndexedDB, queue mutations offline, reconcile conflicts explicitly,
-          and replay missions chronologically.
-        </p>
-
-        {/* Primary Action Buttons */}
-        <div className="mt-10 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
-          {isAuthenticated ? (
-            <Link
-              to="/dashboard"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,210,255,0.35)]"
-            >
-              <span>ENTER OPERATIONS</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          ) : (
-            <>
-              <button
-                onClick={handleLaunchDemo}
-                disabled={isLaunchingDemo}
-                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blackbox-cyan text-black font-mono text-sm font-bold hover:bg-cyan-300 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,210,255,0.35)]"
-              >
-                <span>{isLaunchingDemo ? 'INITIALIZING DEMO...' : 'ENTER OPERATIONS (DEMO)'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={scrollToHowItWorks}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-mono text-sm font-medium transition-colors"
-              >
-                SEE HOW IT WORKS
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* 4 Pillars of Resilient Ops */}
-        <div id="how-it-works" className="mt-16 grid w-full grid-cols-1 gap-3 text-left sm:grid-cols-2 lg:grid-cols-4">
-          <div className="ops-surface p-5 transition-colors hover:border-blackbox-cyan/35">
-            <div className="text-cyan-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5" />
-              01 // LIVE COORD
+      <main>
+        <section className="mx-auto grid max-w-[1440px] gap-12 px-5 pb-20 pt-16 sm:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end lg:gap-24 lg:pt-24">
+          <div>
+            <div className="mb-7 inline-flex items-center gap-2 border-l-2 border-blackbox-cyan pl-3 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-blackbox-textSecondary">
+              <Activity className="h-3.5 w-3.5 text-blackbox-cyan" aria-hidden="true" />
+              Offline-first mission coordination
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed font-sans">
-              Real-time situational awareness, team dispatching, and bidirectional updates via Socket.IO rooms.
+            <h1 className="max-w-4xl font-display text-5xl font-bold leading-[0.98] tracking-[-0.06em] text-blackbox-text sm:text-7xl">
+              Keep the mission moving when the network does not.
+            </h1>
+            <p className="mt-7 max-w-2xl text-base leading-7 text-blackbox-textSecondary sm:text-lg">
+              BlackBox gives commanders and field operators one durable workspace for dispatch, observation, sync, and replay.
+            </p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              {isAuthenticated ? (
+                <Link to="/dashboard" className="ops-button-primary min-h-12 px-6">Enter operations <ArrowRight className="h-4 w-4" /></Link>
+              ) : (
+                <button type="button" onClick={handleLaunchDemo} disabled={isLaunchingDemo} className="ops-button-primary min-h-12 px-6">
+                  {isLaunchingDemo ? 'Preparing demo…' : 'Launch live demo'} <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
+              <a href="#capabilities" className="ops-button-quiet min-h-12 px-6">See the operating model</a>
+            </div>
+            <p className="mt-5 font-mono text-[11px] text-blackbox-muted">
+              {isAuthenticated ? `Signed in as ${user?.name ?? 'operator'}` : 'Local work remains actionable. Supported changes sync when the link returns.'}
             </p>
           </div>
 
-          <div className="ops-surface p-5 transition-colors hover:border-blackbox-critical/35">
-            <div className="text-rose-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5" />
-              02 // OFFLINE CACHE
+          <div className="border-l border-blackbox-border pl-6 sm:pl-8 lg:mb-2">
+            <div className="mb-5 flex items-center justify-between border-b border-blackbox-border pb-4">
+              <span className="ops-kicker">Operational model</span>
+              <span className="font-mono text-[10px] text-blackbox-muted">BB / 01</span>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed font-sans">
-              Zero workflow lockouts. Local IndexedDB storage and client-side state machine validate and queue mutations.
-            </p>
+            <div className="space-y-0">
+              {['Dispatch', 'Execute locally', 'Reconcile', 'Replay'].map((step, index) => (
+                <div key={step} className="flex items-center gap-4 border-b border-blackbox-border py-4 last:border-b-0">
+                  <span className="font-mono text-xs text-blackbox-cobalt">0{index + 1}</span>
+                  <span className="font-display text-lg font-semibold text-blackbox-text">{step}</span>
+                  <span className="ml-auto h-px w-10 bg-blackbox-borderLight" aria-hidden="true" />
+                </div>
+              ))}
+            </div>
           </div>
+        </section>
 
-          <div className="ops-surface p-5 transition-colors hover:border-blackbox-warning/35">
-            <div className="text-amber-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5" />
-              03 // SYNC & CONFLICT
+        <section id="capabilities" className="border-y border-blackbox-border bg-blackbox-surface">
+          <div className="mx-auto max-w-[1440px] px-5 py-10 sm:px-8">
+            <div className="mb-7 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div><div className="ops-kicker">What stays connected</div><h2 className="mt-2 font-display text-2xl font-bold tracking-tight">A compact operating surface for uncertain conditions.</h2></div>
+              <span className="font-mono text-[11px] text-blackbox-muted">No synthetic telemetry. Real client state only.</span>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed font-sans">
-              Automatic push sync upon reconnection. Server divergence triggers visible side-by-side conflict resolution.
-            </p>
-          </div>
-
-          <div className="ops-surface p-5 transition-colors hover:border-blackbox-success/35">
-            <div className="text-emerald-400 font-mono text-xs uppercase tracking-wider mb-2 font-bold flex items-center gap-2">
-              <History className="w-3.5 h-3.5" />
-              04 // MISSION REPLAY
+            <div className="grid gap-px overflow-hidden border border-blackbox-border bg-blackbox-border sm:grid-cols-2 lg:grid-cols-4">
+              {capabilities.map(({ icon: Icon, title, copy }) => (
+                <article key={title} className="bg-blackbox-surface p-5">
+                  <Icon className="h-5 w-5 text-blackbox-cobalt" aria-hidden="true" />
+                  <h3 className="mt-8 font-display text-base font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-blackbox-textSecondary">{copy}</p>
+                </article>
+              ))}
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed font-sans">
-              Forensic timeline playback. Reconstruct exact historical field states from immutable MissionEvents.
-            </p>
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-blackbox-border/80 bg-blackbox-surface/70 px-6 py-4 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-blackbox-muted gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400 font-bold">BLACKBOX</span>
-          <span>•</span>
-          <span>OFFLINE-FIRST OPERATIONS PLATFORM</span>
-        </div>
-        <div className="text-slate-500">
-          {isAuthenticated ? `SESSION: ${user?.name} (${user?.role})` : 'OPERATIONAL STANDBY'}
-        </div>
+      <footer className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 font-mono text-[10px] text-blackbox-muted sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <span>BLACKBOX / RESILIENT OPERATIONS PLATFORM</span>
+        <span>{isAuthenticated ? `SESSION / ${user?.role ?? 'OPERATOR'}` : 'STATUS / READY FOR DEPLOYMENT'}</span>
       </footer>
     </div>
   );

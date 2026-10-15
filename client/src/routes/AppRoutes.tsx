@@ -10,6 +10,10 @@ import { MissionDetailPage } from '../pages/MissionDetailPage';
 import { MissionReplayPage } from '../pages/MissionReplayPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
+import SmokyButtonDemo from '../components/ui/smoky-demo';
+import ShaderBackgroundDemo from '../components/ui/demo';
+import AuthSwitchDemo from '../components/ui/auth-switch-demo';
+import ModernLoginDemo from '../components/ui/modern-login-demo';
 import { ProtectedRoute } from './ProtectedRoute';
 import { RoleGuard } from './RoleGuard';
 import { AppShell } from '../layouts/AppShell';
@@ -21,6 +25,10 @@ export const AppRoutes: React.FC = () => {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/demo/smoky-button" element={<SmokyButtonDemo />} />
+      <Route path="/demo/shader-background" element={<ShaderBackgroundDemo />} />
+      <Route path="/demo/auth-switch" element={<AuthSwitchDemo />} />
+      <Route path="/demo/modern-login" element={<ModernLoginDemo />} />
 
       {/* Protected Routes inside AppShell */}
       <Route
