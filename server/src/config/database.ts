@@ -35,7 +35,7 @@ export const connectDatabase = async (): Promise<void> => {
       serverSelectionTimeoutMS: 5000,
     };
 
-    console.log(`[Database] Attempting connection to MongoDB at: ${config.mongodbUri}`);
+    console.log('[Database] Attempting connection to configured MongoDB');
     await mongoose.connect(config.mongodbUri, options);
     isConnected = true;
     console.log('[Database] MongoDB connected successfully');

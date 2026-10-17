@@ -8,6 +8,7 @@ coverage/
 client/e2e-artifacts/
 client/e2e-report/
 client/test-results/
+client/tests/e2e/browser-state.json
 
 # Production builds
 dist/
@@ -15,6 +16,9 @@ build/
 
 # Environment files
 .env
+.env.*
+!.env.example
+!**/.env.example
 .env.local
 .env.development.local
 .env.test.local

@@ -141,6 +141,24 @@ test('offline replay excludes pending markers, uses historical labels and handle
   assert.equal(result.summary.totalEvents, 2);
 });
 
+test('offline replay merges synced cached observations into a stale complete snapshot', async () => {
+  await r.cacheMission(mission);
+  const shared = event('shared', 'OBSERVATION_RECORDED', { text: 'Snapshot copy' }, { actorId: r.account });
+  const staleOnly = event('stale-only', 'OBSERVATION_RECORDED', { text: 'Stale history' }, { createdAt: '2026-10-16T00:00:01.000Z' });
+  const synced = { ...event('synced', 'OBSERVATION_RECORDED', { text: 'Acknowledged observation' }, { createdAt: '2026-10-16T00:00:03.000Z' }), actorId: r.account, source: 'USER', updatedAt: '2026-10-16T00:00:03.000Z' };
+  const pending = { ...event('pending-replay', 'OBSERVATION_RECORDED', { text: 'Do not replay' }, { createdAt: '2026-10-16T00:00:04.000Z' }), actorId: r.account, source: 'LOCAL', syncState: 'PENDING' };
+  await r.cacheEvents([shared, synced, pending]);
+  await r.cacheResponse(r.cacheResponseKey(`replay-history:${r.mission}`, { eventType: 'OBSERVATION_RECORDED' }), page([shared, staleOnly, pending]), r.account);
+  http.get = async () => { throw new ApiRequestError({ code: 'NETWORK_ERROR', message: 'Synthetic offline' }); };
+
+  const result = await replayApi.all(r.mission, { eventType: 'OBSERVATION_RECORDED' });
+  assert.deepEqual(result.events.map((item) => item.id), ['shared', 'stale-only', 'synced']);
+  assert.equal(result.events.filter((item) => item.id === 'shared').length, 1);
+  assert.equal(result.events.find((item) => item.id === 'synced').payload.text, 'Acknowledged observation');
+  assert.equal(result.events.some((item) => item.id === 'pending-replay'), false);
+  assert.equal(result.history.pendingExcluded, 1);
+});
+
 test('replay cache is account scoped; HTTP errors never masquerade as offline success', async () => {
   http.get = async (_url, config) => ok(page([event('a', 'TASK_CREATED', task)]), config);
   await replayApi.all(r.mission);

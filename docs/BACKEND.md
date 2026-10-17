@@ -36,7 +36,7 @@ Protected writes require a MongoDB replica set or mongos because entity, Mission
 | Sync | `POST /sync`, conflict list/detail/resolution routes |
 | Replay | `GET /missions/:id/replay` with signed cursor pagination |
 | Demo | guarded `/demo/info`, `/demo/reset`, `/demo/trigger-conflict` |
-| Health | `GET /health` |
+| Health | `GET /health`, `GET /health/live`, `GET /health/ready` |
 
 The synchronization endpoint is **`POST /api/v1/sync`**.
 

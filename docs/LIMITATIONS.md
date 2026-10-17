@@ -2,8 +2,8 @@
 
 ## Release blockers
 
-- The current Git `HEAD` is backend-only. The frontend and much of the release candidate are staged/uncommitted in the working tree, so a clean clone of `HEAD` cannot reproduce the product.
-- The clean-install browser acceptance run failed the offline observation → replay assertion. Realtime passed, and backend/client persistence suites pass, but the full browser journey is not release-qualified.
+- The working tree contains an unreleased candidate; this report does not claim that a clean clone of the current `HEAD` contains these uncommitted changes. A release owner must commit and review the candidate before tagging.
+- External cloud deployment, managed MongoDB, HTTPS, TLS, backups, restore drills, and multi-instance Socket.IO scaling remain unverified.
 
 ## Browser and PWA
 
@@ -29,4 +29,4 @@
 
 ## Performance
 
-- The production client main bundle is approximately 533 kB after minification, producing a Vite advisory. No code-splitting optimization was introduced during the release audit.
+- Route-level code splitting reduced the main client chunk below the default Vite 500 kB warning threshold in the current local build. Deployed network performance remains unverified.

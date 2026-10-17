@@ -27,6 +27,16 @@ function isPendingEvent(event: unknown): boolean {
   return value.source === 'LOCAL' || value.syncState === 'PENDING';
 }
 
+function mergeCachedReplayEvents(snapshot: readonly (MissionEvent | ReplayNormalizedEvent)[], cached: readonly MissionEvent[]): ReplayNormalizedEvent[] {
+  // Replay snapshots can lag the durable event cache after an acknowledgement.
+  // Merge before filtering so current authoritative rows can fill that gap;
+  // normalize/deduplicate here to keep stable IDs and chronological ordering.
+  return authoritativeReplayEvents([
+    ...snapshot,
+    ...cached,
+  ].filter((event) => !isPendingEvent(event)).map(normalizeEvent));
+}
+
 function countPendingEvents(...groups: (readonly unknown[])[]): number {
   const ids = new Set<string>();
   let withoutId = 0;
@@ -119,12 +129,12 @@ async function getReplayPage(missionId: string, query?: ReplayQuery): Promise<Re
     const pendingExcluded = countPendingEvents(cachedEvents);
     const complete = query?.cursor ? undefined : await getCachedResponse<ReplayData>(cacheResponseKey(`replay-history:${missionId}`, query), accountId);
     if (complete) {
-      const events = filterReplay(complete.events, query).map(normalizeEvent);
+      const events = filterReplay(mergeCachedReplayEvents(complete.events, cachedEvents), query);
       await assertReplayAccount(accountId);
       return { ...complete, events, summary: summaryFor(events), history: { ...complete.history, source: 'cache', limited: complete.history?.limited ?? true, pendingExcluded: countPendingEvents(cachedEvents, complete.events), notice: 'Offline: cached authoritative replay history. Pending local events are excluded.' } };
     }
     if (page) {
-      const events = filterReplay(page.events, query).map(normalizeEvent);
+      const events = filterReplay(mergeCachedReplayEvents(page.events, cachedEvents), query);
       await assertReplayAccount(accountId);
       return { ...page, events, summary: summaryFor(events), history: { source: 'cache', limited: page.pagination.hasMore || Boolean(query?.cursor || query?.from || query?.to || query?.eventType), pendingExcluded: countPendingEvents(cachedEvents, page.events), notice: 'Offline: cached authoritative replay history. Pending local events are excluded.' } };
     }

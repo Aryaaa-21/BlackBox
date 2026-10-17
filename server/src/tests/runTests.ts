@@ -54,6 +54,10 @@ async function runTests() {
     const healthRes = await request.get('/api/v1/health');
     assert(healthRes.status === 200, 'GET /api/v1/health returns 200 OK');
     assert(healthRes.body.success === true, 'GET /api/v1/health has standard success format');
+    const liveRes = await request.get('/api/v1/health/live');
+    assert(liveRes.status === 200 && liveRes.body.data.status === 'alive', 'GET /api/v1/health/live reports process liveness');
+    const readyRes = await request.get('/api/v1/health/ready');
+    assert(readyRes.status === 200 && readyRes.body.data.transactions === 'supported', 'GET /api/v1/health/ready verifies database transaction readiness');
 
     // 4. Public registration is never allowed to provision a Commander.
     const commanderEmail = `test.commander.${Date.now()}@blackbox.local`;

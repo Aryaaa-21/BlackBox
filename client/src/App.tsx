@@ -1,15 +1,9 @@
-import { useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthenticatedShell } from './components/layout/AuthenticatedShell'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
-import { DashboardPage } from './pages/app/DashboardPage'
-import { MissionDetailPage } from './pages/app/MissionDetailPage'
-import { MissionReplayPage } from './pages/app/MissionReplayPage'
-import { MissionsPage } from './pages/app/MissionsPage'
-import { SettingsPage } from './pages/app/SettingsPage'
-import { NotFoundPage } from './pages/NotFoundPage'
 import { useAuthStore } from './stores/auth.store'
 import { useConnectivityStore } from './stores/connectivity.store'
 import { useRealtimeStore } from './stores/realtime.store'
@@ -19,6 +13,13 @@ import { LoadingState } from './components/ui'
 import { ShaderBackground } from './components/ui/ethereal-whispers'
 import MotionBlurDemo from './components/ui/demo'
 import ModernLoginSignupDemo from './components/ui/modern-login-signup-demo'
+
+const DashboardPage = lazy(async () => ({ default: (await import('./pages/app/DashboardPage')).DashboardPage }))
+const MissionDetailPage = lazy(async () => ({ default: (await import('./pages/app/MissionDetailPage')).MissionDetailPage }))
+const MissionReplayPage = lazy(async () => ({ default: (await import('./pages/app/MissionReplayPage')).MissionReplayPage }))
+const MissionsPage = lazy(async () => ({ default: (await import('./pages/app/MissionsPage')).MissionsPage }))
+const SettingsPage = lazy(async () => ({ default: (await import('./pages/app/SettingsPage')).SettingsPage }))
+const NotFoundPage = lazy(async () => ({ default: (await import('./pages/NotFoundPage')).NotFoundPage }))
 
 function Bootstrap() {
   const loadCurrentUser = useAuthStore((state) => state.loadCurrentUser)
@@ -57,7 +58,7 @@ function Bootstrap() {
   }, [api, browser, user?.id, sync])
 
   if (!initialized) return <div className="boot-screen"><LoadingState label="Opening operations console" /></div>
-  return <RoutesWithGuards />
+  return <Suspense fallback={<div className="boot-screen"><LoadingState label="Loading workspace" /></div>}><RoutesWithGuards /></Suspense>
 }
 
 function ProtectedRoute() {

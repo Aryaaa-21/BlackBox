@@ -299,6 +299,71 @@ test('stale cache fallback is exercised through the real operations store', asyn
   } finally { tasksApi.mission = original; useOperationsStore.getState().reset(); }
 });
 
+test('cached event fallback includes mapped authoritative EVENT rows', async () => {
+  const { http, ApiRequestError } = require('../src/api/http.ts');
+  const { cacheResponse, cacheResponseKey } = require('../src/db/index.ts');
+  const { useOperationsStore } = require('../src/stores/operations.store.ts');
+  const authoritativeId = 'dddddddddddddddddddddddd';
+  const authoritative = { id: authoritativeId, missionId: r.mission, actorId: r.account, eventType: 'OBSERVATION_RECORDED', targetType: 'OBSERVATION', targetId: null, payload: { text: 'Synced observation' }, source: 'USER', createdAt: r.now, updatedAt: r.now };
+  await r.cacheEvent(authoritative);
+  await r.db.idMappings.put({ accountId: r.account, entityType: 'EVENT', localId: 'local-observation', serverId: authoritativeId, mutationId: 'mutation-observation', updatedAt: r.now });
+  await cacheResponse(cacheResponseKey(`events:${r.mission}`, {}), { events: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } }, r.account);
+  const originalGet = http.get;
+  http.get = async () => { throw new ApiRequestError({ code: 'NETWORK_ERROR', message: 'Synthetic offline' }); };
+  try {
+    const result = await useOperationsStore.getState().loadEvents(r.mission);
+    assert.deepEqual(result.events.map((event) => event.id), [authoritativeId]);
+  } finally {
+    http.get = originalGet;
+    useOperationsStore.getState().reset();
+  }
+});
+
+test('offline observation survives refresh, transport loss, retry and authoritative reconciliation', async () => {
+  const s = r.server();
+  const originalSubmit = r.syncApi.submit;
+  let lostResponse = true;
+  r.syncApi.submit = async (batch) => {
+    const response = await s.submit(batch);
+    if (lostResponse) { lostResponse = false; throw fail(undefined); }
+    return response;
+  };
+  try {
+    const observation = await r.recordObservationMutation(r.mission, { text: 'Durable offline SITREP' }, true);
+    const before = (await queued())[0];
+    assert.equal(before.operationType, 'RECORD_OBSERVATION');
+    assert.equal(before.entityType, 'EVENT');
+    assert.equal(before.entityId, observation.id);
+    assert.equal(before.payload.text, 'Durable offline SITREP');
+    assert.equal(before.status, 'PENDING');
+    assert.ok(before.idempotencyKey);
+    assert.equal((await r.getCachedEvents(r.mission))[0].source, 'LOCAL');
+
+    await r.reopen();
+    assert.equal((await queued()).length, 1);
+    assert.equal((await r.getCachedEvents(r.mission))[0].payload.text, 'Durable offline SITREP');
+
+    await assert.rejects(r.syncQueuedMutations(), /Injected transport failure/);
+    assert.equal((await queued())[0].status, 'PENDING');
+    await r.reopen();
+    await r.due();
+    const retry = await r.syncQueuedMutations();
+    assert.equal(retry.duplicates, 1);
+    assert.equal((await queued()).length, 0);
+    assert.equal(s.events.size, 1);
+
+    const mapping = (await r.getIdMappings(r.account)).find((item) => item.entityType === 'EVENT');
+    assert.ok(mapping);
+    const authoritative = await r.db.events.get(mapping.serverId);
+    assert.equal(authoritative.source, 'USER');
+    assert.equal(authoritative.eventType, 'OBSERVATION_RECORDED');
+    assert.equal(authoritative.payload.text, 'Durable offline SITREP');
+    assert.equal((await r.getCachedEvents(r.mission)).filter((item) => item.payload.text === 'Durable offline SITREP').length, 1);
+  } finally {
+    r.syncApi.submit = originalSubmit;
+  }
+});
+
 test('incomplete acknowledgement leaves only missing entries retryable', async () => {
   await create('First'); await create('Second');
   const s = r.server();

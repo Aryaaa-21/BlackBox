@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+client/e2e-artifacts
+client/e2e-report
+client/test-results
+AUDIT.md
+*.log

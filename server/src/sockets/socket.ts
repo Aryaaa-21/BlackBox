@@ -10,8 +10,8 @@ let io: SocketIOServer | null = null;
 
 export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
   const allowedOrigins = config.isProduction
-    ? [config.clientUrl]
-    : [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'];
+    ? config.corsOrigins
+    : [...new Set([...config.corsOrigins, 'http://localhost:5173', 'http://127.0.0.1:5173'])];
 
   io = new SocketIOServer(httpServer, {
     cors: {

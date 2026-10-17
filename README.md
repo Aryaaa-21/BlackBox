@@ -51,6 +51,7 @@ Durable mutation queue        Mongoose / MongoDB replica set
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/OFFLINE_SYNC.md](docs/OFFLINE_SYNC.md), and [docs/REPLAY.md](docs/REPLAY.md) for implementation detail.
+Deployment configuration and the local production simulation are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 The final release gate is recorded in [docs/PHASE6_FINAL_RELEASE_REPORT.md](docs/PHASE6_FINAL_RELEASE_REPORT.md), with test evidence in [docs/FINAL_TEST_MATRIX.md](docs/FINAL_TEST_MATRIX.md) and known limitations in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ## Technology
@@ -115,7 +116,7 @@ npm run build:server
 npm run build:client
 ```
 
-The client build currently emits a Vite advisory for the main bundle being above 500 kB. This is a performance follow-up, not a build failure.
+The client build uses route-level code splitting. The remaining main chunk is expected to be below the default Vite 500 kB warning threshold in the current build; inspect the output for any future regression.
 
 ## Three-minute demo
 
@@ -129,7 +130,7 @@ The client build currently emits a Vite advisory for the main bundle being above
 8. Resolve the conflict and open Mission Replay.
 9. Play the event history and close with: **“The network can fail. The operation shouldn't.”**
 
-The exact reproducible runbook is in [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md). Phase 4 browser evidence currently marks the complete offline/two-browser demo as not ready; do not claim browser verification beyond the report.
+The exact reproducible runbook is in [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md). Current local Chromium evidence covers smoke, offline observation/replay, and realtime; conflict browser verification and external deployment remain separate checks.
 
 ## Testing
 
@@ -191,9 +192,9 @@ The release audit intentionally retains the names `client/` and `server/` instea
 | Phase 1 baseline/security | Pass evidence retained in implementation and regression tests |
 | Phase 2 offline/sync reliability | Automated pass; see `docs/PHASE2_REPORT.md` |
 | Phase 3 consistency/replay | Automated pass; see `docs/PHASE3_REPORT.md` |
-| Phase 4 real-browser acceptance | **Not fully release-qualified**; see `docs/PHASE4_REPORT.md` |
-| Phase 5 demo/release packaging | Completed with documented P1s; see `docs/PHASE5_REPORT.md` |
-| Phase 6 final release gate | **NOT RELEASE READY**; see `docs/PHASE6_FINAL_RELEASE_REPORT.md` |
+| Phase 4 real-browser acceptance | Chromium smoke, offline/replay, and realtime flows verified; conflict browser flow remains a separate release check |
+| Phase 5 demo/release packaging | Deployment simulation, readiness endpoints, container definitions, and CI configuration prepared |
+| Phase 6 final release gate | Use the current release-readiness report and final test matrix; external cloud deployment remains separate |
 
 ## License
 

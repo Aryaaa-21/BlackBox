@@ -14,9 +14,14 @@ async function login(page, credentials = COMMANDER) {
 
 test.describe('@smoke @auth', () => {
   test('landing → login → protected dashboard → logout', async ({ page }) => {
+    const browserErrors = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+    });
+    page.on('pageerror', (error) => browserErrors.push(`page: ${error.message}`));
     await page.goto('/');
-    await expect(page.getByRole('link', { name: 'BlackBox home' })).toBeVisible();
-    await page.getByRole('button', { name: /Open operations console/i }).click();
+    await expect(page.getByRole('link', { name: 'BlackBox home' })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('link', { name: /Open operations console/i }).click();
     await expect(page).toHaveURL(/\/login(?:\?.*)?$/);
     await login(page);
     await expect(page.getByText('Browser Commander')).toBeVisible();
@@ -26,6 +31,7 @@ test.describe('@smoke @auth', () => {
     await expect(page).toHaveURL(/\/login/);
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login\?next=/);
+    expect(browserErrors).toEqual([]);
   });
 
   test('invalid credentials show a visible error and valid login survives refresh', async ({ page }) => {
