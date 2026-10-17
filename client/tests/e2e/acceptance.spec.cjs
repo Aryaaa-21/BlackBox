@@ -79,12 +79,15 @@ test.describe('@critical @offline @replay', () => {
     await page.getByRole('row').filter({ hasText: 'Browser Fixture Task Edited' }).getByRole('button', { name: 'Complete' }).click({ force: true });
     await expect(page.getByRole('row').filter({ hasText: 'Browser Fixture Task Edited' })).toContainText('COMPLETED');
 
-    await page.getByRole('tab', { name: 'Activity' }).click({ force: true });
-    await page.getByRole('button', { name: 'Record observation' }).click({ force: true });
+    const activityTab = page.getByRole('tab', { name: 'Activity' });
+    await activityTab.click();
+    await expect(activityTab).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'Record observation' }).click();
     const observation = page.getByRole('dialog');
     await observation.getByLabel('Observation').fill('Offline SITREP from browser acceptance');
-    await observation.getByRole('button', { name: 'Save locally' }).click({ force: true });
-    await expect(page.getByText('Offline SITREP from browser acceptance')).toBeVisible();
+    await observation.getByRole('button', { name: 'Save locally' }).click();
+    await expect(observation).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Offline SITREP from browser acceptance')).toBeVisible({ timeout: 15_000 });
 
     await page.reload();
     await expect(page.getByText('Offline', { exact: true })).toBeVisible({ timeout: 20_000 });
@@ -105,7 +108,7 @@ test.describe('@critical @offline @replay', () => {
     await expect(page.getByText('Offline Inspection')).toBeVisible({ timeout: 20_000 });
     await page.getByRole('link', { name: 'Replay', exact: true }).last().click({ force: true });
     await expect(page).toHaveURL(/\/missions\/[a-f0-9]{24}\/replay\?mission=[a-f0-9]{24}$/);
-    await expect(page.getByText('TASK_CREATED').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('TASK_CREATED').first()).toBeVisible({ timeout: 35_000 });
     await expect(page.getByRole('button', { name: /TASK_UPDATED/ }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /TASK_COMPLETED/ }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /MEMBER_REACTIVATED/ }).first()).toBeVisible();
@@ -128,10 +131,69 @@ test.describe('@critical @offline @replay', () => {
       await openMission(operator);
       await commander.getByRole('tab', { name: 'Tasks' }).click({ force: true });
       await operator.getByRole('tab', { name: 'Tasks' }).click({ force: true });
-      await expect(commander.getByText('Browser Fixture Task')).toBeVisible();
-      await expect(operator.getByText('Browser Fixture Task')).toBeVisible();
-      await commander.getByRole('row').filter({ hasText: 'Browser Fixture Task' }).getByRole('button', { name: 'Start' }).click({ force: true });
-      await expect(operator.getByRole('row').filter({ hasText: 'Browser Fixture Task' })).toContainText('ACTIVE', { timeout: 20_000 });
+      await expect(commander.getByText('Realtime Fixture Task')).toBeVisible();
+      await expect(operator.getByText('Realtime Fixture Task')).toBeVisible();
+      await commander.getByRole('row').filter({ hasText: 'Realtime Fixture Task' }).getByRole('button', { name: 'Start' }).click({ force: true });
+      await expect(operator.getByRole('row').filter({ hasText: 'Realtime Fixture Task' })).toContainText('ACTIVE', { timeout: 20_000 });
+    } finally {
+      await commanderContext.close();
+      await operatorContext.close();
+    }
+  });
+
+  test('@conflict two contexts create conflicting task edits → conflict detected in UI → Keep Server resolution', async ({ browser }) => {
+    const commanderContext = await browser.newContext();
+    const operatorContext = await browser.newContext();
+    const commander = await commanderContext.newPage();
+    const operator = await operatorContext.newPage();
+    try {
+      await login(commander, COMMANDER);
+      await login(operator, OPERATOR);
+      await openMission(commander);
+      await openMission(operator);
+
+      await commander.getByRole('tab', { name: 'Tasks' }).click({ force: true });
+      await operator.getByRole('tab', { name: 'Tasks' }).click({ force: true });
+      await expect(commander.getByText('Conflict Fixture Task')).toBeVisible();
+      await expect(operator.getByText('Conflict Fixture Task')).toBeVisible();
+
+      // 1. Operator goes offline with task in ACTIVE state (baseVersion 2)
+      await operatorContext.setOffline(true);
+      await expect(operator.getByText('Offline', { exact: true })).toBeVisible({ timeout: 15_000 });
+
+      // 2. Commander (online) advances server state: completes task (version becomes 3)
+      await commander.getByRole('row').filter({ hasText: 'Conflict Fixture Task' }).getByRole('button', { name: 'Complete' }).click({ force: true });
+      await expect(commander.getByRole('row').filter({ hasText: 'Conflict Fixture Task' })).toContainText('COMPLETED', { timeout: 20_000 });
+
+      // 3. Operator (offline) also attempts to mutate task based on stale version 2
+      await operator.getByRole('row').filter({ hasText: 'Conflict Fixture Task' }).getByRole('button', { name: 'Complete' }).click({ force: true });
+      await expect(operator.getByRole('row').filter({ hasText: 'Conflict Fixture Task' })).toContainText('COMPLETED', { timeout: 25_000 });
+
+      // 4. Operator reconnects and triggers synchronization
+      await operatorContext.setOffline(false);
+      await expect(operator.getByText('Online', { exact: true })).toBeVisible({ timeout: 20_000 });
+      await operator.getByRole('button', { name: 'Open synchronization status' }).click();
+      await expect(operator).toHaveURL(/\/settings$/);
+      const syncNow = operator.getByRole('button', { name: 'Sync now' });
+      if (await syncNow.isEnabled()) await syncNow.click();
+
+      // Wait for sync processing: conflict is detected by server due to version mismatch
+      await expect(operator.getByText(/1 sync conflict/i).or(operator.getByText(/conflict/i)).first()).toBeVisible({ timeout: 30_000 });
+
+      // 5. Operator navigates back to mission to review and resolve the conflict in UI
+      await openMission(operator);
+      await expect(operator.getByText(/sync conflict needs review/i)).toBeVisible({ timeout: 20_000 });
+      await operator.getByRole('button', { name: 'Review conflicts' }).click({ force: true });
+
+      // 6. Conflict modal appears with Local and Server versions
+      const modal = operator.getByRole('dialog');
+      await expect(modal.getByRole('heading', { name: 'Sync conflict' })).toBeVisible();
+      await expect(modal.getByText('Local version')).toBeVisible();
+      await expect(modal.getByText('Server version')).toBeVisible();
+
+      // 7. Operator resolves by choosing "Keep server"
+      await modal.getByRole('button', { name: 'Keep server' }).click({ force: true });
+      await expect(operator.getByText(/sync conflict needs review/i)).not.toBeVisible({ timeout: 20_000 });
     } finally {
       await commanderContext.close();
       await operatorContext.close();

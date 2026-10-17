@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, EmptyState, ErrorState, LoadingState, SectionHeading, Table } from '../../components/ui'
 import { EventTimeline, MissionRow } from '../../components/operations'
+import FeaturesBlock from '../../components/ui/features-4'
 import { tasksApi } from '../../api'
 import { useOperationsStore } from '../../stores/operations.store'
 import { useSyncStore } from '../../stores/sync.store'
@@ -52,5 +53,6 @@ export function DashboardPage() {
       <Card className="dashboard-grid__side"><div className="card__header"><div><span className="eyebrow">System status</span><h2>Connection state</h2></div></div><div className="detail-panel__body replay-state"><div className="replay-state__line"><span>Connectivity</span><strong>{connectionText}</strong></div><div className="replay-state__line"><span>Server</span><strong>{api === 'reachable' ? 'AVAILABLE' : api === 'unreachable' ? 'UNAVAILABLE' : 'CHECKING'}</strong></div><div className="replay-state__line"><span>Socket</span><strong>{socket ? 'CONNECTED' : 'DISCONNECTED'}</strong></div><div className="replay-state__line"><span>Last sync</span><strong>{pendingCount ? `${pendingCount} pending` : 'Clear'}</strong></div></div></Card>
     </div>
     <Card className="detail-panel"><div className="card__header"><div><span className="eyebrow">Recent activity</span><h2>Mission event stream</h2></div><Activity size={16} color="var(--signal)" /></div><div className="detail-panel__body"><EventTimeline events={activity} /></div></Card>
+    <FeaturesBlock className="mt-8" />
   </>
 }

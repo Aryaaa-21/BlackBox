@@ -33,11 +33,28 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     get().disconnect();
     set({ missionIds });
     const socket = createRealtimeSocket(token || getPersistedSessionToken());
+    let hasConnected = false;
     const publish = (work: Promise<unknown>) => { void work.catch((error: unknown) => set({ lastError: error instanceof Error ? error.message : 'Unable to cache realtime update' })); };
     const unsubscribe = subscribeToMissionEvents(socket, {
       connect: () => {
+        const recovering = hasConnected;
+        hasConnected = true;
         set({ connected: true, lastError: null });
-        void Promise.all(get().missionIds.map((missionId) => joinMission(socket, missionId)));
+        // Socket.IO only guarantees delivery while connected. On a reconnect,
+        // rejoin first and then backfill the durable REST/cache projections so
+        // updates committed during the disconnect cannot leave the UI stale.
+        void Promise.all(get().missionIds.map(async (missionId) => {
+          await joinMission(socket, missionId);
+          if (recovering) {
+            const operations = useOperationsStore.getState();
+            await Promise.all([
+              operations.loadTasks(missionId),
+              operations.loadMembers(missionId),
+              operations.loadEvents(missionId, { limit: 100 }),
+              useSyncStore.getState().refresh(missionId),
+            ]);
+          }
+        })).catch((error: unknown) => set({ lastError: error instanceof Error ? error.message : 'Unable to recover realtime state' }));
       },
       disconnect: () => set({ connected: false }),
       connect_error: (error) => set({ connected: false, lastError: error.message }),

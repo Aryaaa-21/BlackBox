@@ -11,7 +11,8 @@ import { useSyncStore } from './stores/sync.store'
 import { useOperationsStore } from './stores/operations.store'
 import { LoadingState } from './components/ui'
 import { ShaderBackground } from './components/ui/ethereal-whispers'
-import MotionBlurDemo from './components/ui/demo'
+import MotionBlurDemo from './components/ui/motion-blur-demo'
+import FeaturesDemo from './components/ui/demo'
 import ModernLoginSignupDemo from './components/ui/modern-login-signup-demo'
 
 const DashboardPage = lazy(async () => ({ default: (await import('./pages/app/DashboardPage')).DashboardPage }))
@@ -80,6 +81,7 @@ function RoutesWithGuards() {
     <Route path="/" element={<LandingPage />} />
     <Route path="/demo/motion-blur" element={<MotionBlurDemo />} />
     <Route path="/demo/login" element={<ModernLoginSignupDemo />} />
+    <Route path="/demo/features" element={<FeaturesDemo />} />
     <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
     <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
     <Route element={<ProtectedRoute />}>

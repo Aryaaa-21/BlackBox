@@ -1,7 +1,7 @@
 import Dexie, { Table } from 'dexie';
 import type { Mission, MissionEvent, MissionMember, SyncConflict, SyncEntityType, SyncMutation, Task, User } from '../types';
 import { applyTaskMutation, assertQueueTransition, compareQueuedMutations, mappedEntityId, stablePayload } from '../services/sync-policy';
-import { authoritativeVersion, preferAuthoritative } from '../services/authority';
+import { authoritativeVersion, preferAuthoritative, preferTaskView } from '../services/authority';
 
 export type MutationQueueStatus = 'PENDING' | 'SYNCING' | 'FAILED' | 'CONFLICT';
 
@@ -142,24 +142,74 @@ async function cacheVersioned<T extends { id: string; version?: number; updatedA
 }
 
 export async function cacheMission(mission: Mission, accountId?: string): Promise<Mission> { return cacheVersioned(db.missions, mission, accountId); }
-export async function cacheMissions(missions: Mission[], accountId?: string): Promise<Mission[]> { accountId ??= await getActiveAccountId(); return db.transaction('rw', db.missions, () => Promise.all(missions.map((mission) => cacheMission(mission, accountId)))); }
-export async function cacheTask(task: Task, accountId?: string): Promise<Task> { return cacheVersioned(db.tasks, task, accountId); }
-export async function cacheTasks(tasks: Task[], accountId?: string): Promise<Task[]> { accountId ??= await getActiveAccountId(); return db.transaction('rw', db.tasks, () => Promise.all(tasks.map((task) => cacheTask(task, accountId)))); }
-export async function cacheMembers(members: MissionMember[], accountId?: string): Promise<MissionMember[]> { accountId ??= await getActiveAccountId(); return db.transaction('rw', db.members, () => Promise.all(members.map((member) => cacheMember(member, accountId)))); }
+export async function cacheMissions(missions: Mission[], accountId?: string): Promise<Mission[]> {
+  accountId ??= await getActiveAccountId();
+  return db.transaction('rw', db.missions, async () => {
+    const result: Mission[] = [];
+    for (const mission of missions) {
+      const previous = await db.missions.get(mission.id);
+      const selected = preferAuthoritative<ScopedRecord<Mission>>(previous?.accountId === accountId ? previous : undefined, { ...mission, accountId });
+      if (selected !== previous) await db.missions.put(selected);
+      result.push(selected);
+    }
+    return result;
+  });
+}
+export async function cacheTask(task: Task, accountId?: string): Promise<Task> { return cacheVersioned(db.tasks, task, accountId, preferTaskView); }
+export async function cacheTasks(tasks: Task[], accountId?: string): Promise<Task[]> {
+  accountId ??= await getActiveAccountId();
+  return db.transaction('rw', db.tasks, async () => {
+    const result: Task[] = [];
+    for (const task of tasks) {
+      const previous = await db.tasks.get(task.id);
+      const selected = preferTaskView(previous?.accountId === accountId ? previous : undefined, { ...task, accountId });
+      if (selected !== previous) await db.tasks.put(selected);
+      result.push(selected);
+    }
+    return result;
+  });
+}
 export async function cacheMember(member: MissionMember, accountId?: string): Promise<MissionMember> { return cacheVersioned(db.members, member, accountId); }
+export async function cacheMembers(members: MissionMember[], accountId?: string): Promise<MissionMember[]> {
+  accountId ??= await getActiveAccountId();
+  return db.transaction('rw', db.members, async () => {
+    const result: MissionMember[] = [];
+    for (const member of members) {
+      const previous = await db.members.get(member.id);
+      const selected = preferAuthoritative<ScopedRecord<MissionMember>>(previous?.accountId === accountId ? previous : undefined, { ...member, accountId });
+      if (selected !== previous) await db.members.put(selected);
+      result.push(selected);
+    }
+    return result;
+  });
+}
 export async function cacheEvent(event: MissionEvent, accountId?: string): Promise<MissionEvent> {
   accountId ??= await getActiveAccountId();
   return db.transaction('rw', db.events, async () => {
     const previous = await db.events.get(event.id);
-    // Authoritative events are immutable, keyed by stable server ID. A pending row
-    // can never replace one, including when replay and realtime race.
     if (previous && previous.accountId === accountId && previous.source !== 'LOCAL') return previous;
     const selected = { ...event, accountId };
     await db.events.put(selected);
     return selected;
   });
 }
-export async function cacheEvents(events: MissionEvent[], accountId?: string): Promise<MissionEvent[]> { accountId ??= await getActiveAccountId(); return db.transaction('rw', db.events, () => Promise.all(events.map((event) => cacheEvent(event, accountId)))); }
+export async function cacheEvents(events: MissionEvent[], accountId?: string): Promise<MissionEvent[]> {
+  accountId ??= await getActiveAccountId();
+  return db.transaction('rw', db.events, async () => {
+    const result: MissionEvent[] = [];
+    for (const event of events) {
+      const previous = await db.events.get(event.id);
+      if (previous && previous.accountId === accountId && previous.source !== 'LOCAL') {
+        result.push(previous);
+        continue;
+      }
+      const selected = { ...event, accountId };
+      await db.events.put(selected);
+      result.push(selected);
+    }
+    return result;
+  });
+}
 export async function cacheUsers(users: User[], accountId?: string): Promise<void> { accountId ??= await getActiveAccountId(); await db.users.bulkPut(users.map((record) => ({ ...record, accountId }))); }
 export async function cacheConflict(conflict: SyncConflict, accountId?: string): Promise<SyncConflict> {
   return cacheVersioned(db.conflicts, conflict, accountId, (current, incoming) => {

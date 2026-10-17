@@ -21,6 +21,23 @@ function mergeEvents(current: MissionEvent[], incoming: MissionEvent[]): Mission
   });
 }
 
+// A liveQuery result can finish after a newer optimistic write. Keep local
+// rows that were not present in that older result until a later authoritative
+// acknowledgement or refresh replaces them. Without this guard, an in-flight
+// cache read could make an offline task/observation disappear or roll back in
+// the visible store even though its IndexedDB mutation is still durable.
+function mergeLiveTasks(current: Task[], incoming: Task[]): Task[] {
+  const merged = mergeTaskViews(current, incoming);
+  const incomingIds = new Set(incoming.map((task) => task.id));
+  return [...merged, ...current.filter((task) => task.localPending === true && !incomingIds.has(task.id))];
+}
+
+function mergeLiveEvents(current: MissionEvent[], incoming: MissionEvent[]): MissionEvent[] {
+  const merged = mergeEvents(current, incoming);
+  const incomingIds = new Set(incoming.map((event) => event.id));
+  return [...merged, ...current.filter((event) => event.source === 'LOCAL' && !incomingIds.has(event.id))];
+}
+
 interface OperationsState {
   missions: Mission[];
   missionStats: MissionStats | null;
@@ -219,7 +236,7 @@ export const useOperationsStore = create<OperationsState>((set) => {
         }));
         return { accountId, entries };
       }).subscribe({ next: ({ entries }) => {
-        set((state) => ({ tasksByMission: Object.fromEntries(entries.map(([id, tasks]) => [id, mergeTaskViews(state.tasksByMission[id] || [], tasks)])), eventsByMission: Object.fromEntries(entries.map(([id, , events]) => [id, mergeEvents(state.eventsByMission[id] || [], events)])) }));
+        set((state) => ({ tasksByMission: Object.fromEntries(entries.map(([id, tasks]) => [id, mergeLiveTasks(state.tasksByMission[id] || [], tasks)])), eventsByMission: Object.fromEntries(entries.map(([id, , events]) => [id, mergeLiveEvents(state.eventsByMission[id] || [], events)])) }));
       }, error: (error: unknown) => set({ error: messageFor(error) }) });
       return () => subscription.unsubscribe();
     },

@@ -5,6 +5,7 @@ import { eventsApi, membersApi, missionsApi, tasksApi, usersApi } from '../../ap
 import { canUseOfflineCache } from '../../services/sync-policy'
 import { EventTimeline, TaskRow } from '../../components/operations'
 import { Button, Card, Drawer, EmptyState, ErrorState, Field, LoadingState, Modal, PriorityBadge, SelectField, StatusBadge, Table, TextareaField } from '../../components/ui'
+import FeaturesBlock from '../../components/ui/features-4'
 import { cacheEvent, cacheTask, createUuid, getCachedMission } from '../../db'
 import { entityName, relativeDate, shortDate } from '../../lib/format'
 import { useAuthStore } from '../../stores/auth.store'
@@ -85,6 +86,7 @@ export function MissionDetailPage() {
     {memberOpen ? <MemberModal missionId={missionId} onClose={() => setMemberOpen(false)} onSaved={(member) => { upsertMember(member); setMemberOpen(false) }} /> : null}
     {conflictOpen ? <ConflictModal conflict={conflicts.find((item) => item.status === 'OPEN')} onClose={() => setConflictOpen(false)} onResolve={async (resolution) => { const conflict = conflicts.find((item) => item.status === 'OPEN'); if (conflict) await resolveConflict(conflict.id, { resolution }); setConflictOpen(false) }} /> : null}
     {missionEditOpen ? <MissionEditModal mission={mission} onClose={() => setMissionEditOpen(false)} onSaved={(updated) => { setMission(updated); upsertMission(updated); setMissionEditOpen(false) }} /> : null}
+    <FeaturesBlock className="mt-8" />
   </>
 }
 

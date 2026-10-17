@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { membersApi, missionsApi, tasksApi } from '../../api'
 import { MissionRow } from '../../components/operations'
 import { Button, Card, EmptyState, ErrorState, Field, LoadingState, Modal, SelectField, SectionHeading, Table, TextareaField } from '../../components/ui'
+import FeaturesBlock from '../../components/ui/features-4'
 import type { Mission, MissionSeverity, MissionStatus } from '../../types'
 import { useAuthStore } from '../../stores/auth.store'
 import { useOperationsStore } from '../../stores/operations.store'
@@ -29,6 +30,7 @@ export function MissionsPage() {
     <div className="toolbar"><Field label="Search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title or location" /><SelectField label="Status" value={status} onChange={(event) => setStatus(event.target.value as MissionStatus | '')}>{statuses.map((item) => <option key={item} value={item}>{item || 'All statuses'}</option>)}</SelectField><SelectField label="Severity" value={severity} onChange={(event) => setSeverity(event.target.value as MissionSeverity | '')}><option value="">All severity</option>{severities.map((item) => <option key={item}>{item}</option>)}</SelectField></div>
     {actionError ? <ErrorState message={actionError} /> : null}
     <Card>{loading && !missions.length ? <LoadingState label="Loading missions" /> : visible.length ? <Table minWidth={900}><thead><tr><th>Mission</th><th>Status</th><th>Severity</th><th>Location</th><th>Team</th><th>Tasks</th><th>Updated</th><th /></tr></thead><tbody>{visible.map((mission) => <Fragment key={mission.id}><MissionRow mission={mission} taskCount={counts[mission.id]?.tasks} teamCount={counts[mission.id]?.team} /><tr className="mission-actions-row"><td colSpan={8}><div className="table-actions"><Link className="table-link" to={`/missions/${mission.id}`}>Open</Link>{canManage && mission.status === 'DRAFT' ? <><button className="button button--quiet" disabled={offline} onClick={() => { setEditing(mission); setFormOpen(true) }}>Edit</button><button className="button button--quiet" disabled={offline} onClick={() => void act(mission, 'start')}>Start</button><button className="button button--quiet" disabled={offline} onClick={() => void act(mission, 'cancel')}>Cancel</button></> : null}{canManage && mission.status === 'ACTIVE' ? <button className="button button--quiet" disabled={offline} onClick={() => void act(mission, 'complete')}>Complete</button> : null}</div></td></tr></Fragment>)}</tbody></Table> : <EmptyState title="No missions yet" description={canManage ? 'Create your first mission to begin operations.' : 'You will see missions here when you are assigned as an active member.'} action={canManage ? <Button disabled={offline} onClick={() => setFormOpen(true)}><Plus size={15} />Create mission</Button> : null} icon={<Shield size={20} />} />}</Card>
+    <FeaturesBlock className="mt-8" />
     {formOpen ? <MissionForm mission={editing} onClose={() => setFormOpen(false)} onSaved={(mission) => { upsertMission(mission); setFormOpen(false) }} /> : null}
   </>
 }

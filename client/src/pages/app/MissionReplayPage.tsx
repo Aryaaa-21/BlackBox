@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { replayApi } from '../../api'
 import { Button, Card, EmptyState, ErrorState, LoadingState, SelectField, SectionHeading, StatusBadge } from '../../components/ui'
+import FeaturesBlock from '../../components/ui/features-4'
 import { useOperationsStore } from '../../stores/operations.store'
 import { shortDate, shortTime } from '../../lib/format'
 import type { ReplayData } from '../../types'
@@ -23,13 +24,19 @@ export function MissionReplayPage() {
   useEffect(() => { if (!missions.length) void loadMissions({ limit: 50 }) }, [missions.length, loadMissions])
   useEffect(() => { if (routeMissionId && routeMissionId !== missionId) setMissionId(routeMissionId) }, [routeMissionId, missionId])
   useEffect(() => {
+    if (missionId && searchParams.get('mission') !== missionId) {
+      setSearchParams({ mission: missionId }, { replace: true })
+    }
+  }, [missionId, searchParams, setSearchParams])
+  useEffect(() => {
     let cancelled = false
     setPlaying(false); setIndex(0); setData(null); setError(null)
     if (!missionId) return
-    setSearchParams({ mission: missionId }, { replace: true })
-    void replayApi.all(missionId, { limit: 5000 }).then((result) => { if (!cancelled) setData(result) }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load replay') })
+    void replayApi.all(missionId, { limit: 5000 })
+      .then((result) => { if (!cancelled) setData(result) })
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load replay') })
     return () => { cancelled = true }
-  }, [missionId, setSearchParams, reload])
+  }, [missionId, reload])
   useEffect(() => {
     if (!playing || !data?.events.length) return
     const timer = window.setInterval(() => setIndex((value) => {
@@ -65,5 +72,6 @@ export function MissionReplayPage() {
       </Card>
       <div className="stack"><Card><div className="card__header"><div><span className="eyebrow">State at this moment</span><h2>{selected?.createdAt ? shortDate(selected.createdAt) : 'Before first event'}</h2></div></div><div className="detail-panel__body replay-state"><div className="replay-state__line"><span>Mission status</span><StatusBadge status={state.mission?.status || 'UNKNOWN'} /></div><div className="replay-state__line"><span>Tasks observed</span><strong>{Object.keys(state.tasks).length}</strong></div><div className="replay-state__line"><span>Active team members</span><strong>{Object.values(state.members).filter((member) => member.status === 'ACTIVE').length}</strong></div><div className="replay-state__line"><span>Observations</span><strong>{state.observations.length}</strong></div><div className="replay-state__line"><span>Connectivity</span><strong>{state.network}</strong></div><div className="replay-state__line"><span>Sync</span><strong>{state.sync}</strong></div><div className="replay-state__line"><span>Recorded conflicts</span><strong>{Object.keys(state.conflicts).length}</strong></div>{state.warnings.length ? <p role="status">Historical fields may be unavailable. {state.warnings.length} event warning(s); select timeline entries for details.</p> : null}</div></Card><Card><div className="card__header"><div><span className="eyebrow">Selected event</span><h2>{selected?.eventType || '—'}</h2></div></div>{selected ? <div className="detail-panel__body"><dl className="metadata-list"><div><dt>Timestamp</dt><dd>{selected.createdAt ? new Date(selected.createdAt).toLocaleString() : 'Unavailable'}</dd></div><div><dt>Actor</dt><dd>{current?.actor?.name || 'Unavailable'}</dd></div><div><dt>Target</dt><dd>{current?.targetType || '—'}</dd></div><div><dt>Source</dt><dd>{current?.source || 'Unavailable'}</dd></div></dl>{selected.warnings.length ? <ul role="status">{selected.warnings.map((warning, warningIndex) => <li key={warningIndex}>{warning}</li>)}</ul> : null}</div> : <EmptyState title="No event selected" description="Choose an event from the timeline." />}</Card></div>
     </div> : null}
+    <FeaturesBlock className="mt-8" />
   </>
 }

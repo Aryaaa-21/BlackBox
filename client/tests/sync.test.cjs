@@ -245,6 +245,47 @@ test('50+ mutation multi-batch queue survives reopen, network loss, conflict and
   assert.equal((await r.getCachedOpenConflicts()).length, 1);
 });
 
+test('1,000 offline mutations survive browser reopen, response loss and exact sync', async () => {
+  const s = r.server();
+  const tasks = [];
+  for (let index = 0; index < 200; index++) {
+    const task = await create(`Air-gapped task ${index}`);
+    tasks.push(task);
+    await r.changeTaskMutation(task.id, 'UPDATE_TASK', { title: `Air-gapped task ${index} edited` }, { offline: true });
+    await r.changeTaskMutation(task.id, 'ASSIGN_TASK', { userId: r.operator }, { offline: true });
+    await r.changeTaskMutation(task.id, 'UPDATE_TASK_STATUS', { status: 'ACTIVE' }, { offline: true });
+    await r.recordObservationMutation(r.mission, { text: `Air-gapped SITREP ${index}` }, true);
+  }
+
+  assert.equal((await queued()).length, 1_000);
+  await r.reopen();
+  r.connectivity.snapshot = { browser: 'online', api: 'reachable' };
+
+  let firstResponseLost = true;
+  let duplicateResults = 0;
+  r.syncApi.submit = async (batch) => {
+    const result = await s.submit(batch);
+    duplicateResults += result.duplicates;
+    if (firstResponseLost) {
+      firstResponseLost = false;
+      throw fail(undefined);
+    }
+    return result;
+  };
+
+  await assert.rejects(r.syncQueuedMutations());
+  await r.reopen();
+  await r.due();
+  await r.syncQueuedMutations();
+
+  assert.equal((await queued()).length, 0);
+  assert.equal(s.tasks.size, tasks.length);
+  assert.equal(s.events.size, 1_000);
+  assert.equal(duplicateResults, 20);
+  assert.equal([...s.tasks.values()].filter((task) => task.status === 'ACTIVE' && task.assignedTo === r.operator).length, tasks.length);
+  assert.equal((await r.getCachedTasks(r.mission)).length, tasks.length);
+});
+
 test('connectivity distinguishes offline network, reached API errors and server unavailable', () => {
   r.connectivity.snapshot = { browser: 'online', api: 'unknown' };
   for (const status of [400, 401, 403, 404, 409, 422]) {

@@ -5,6 +5,7 @@ import { verifyToken } from '../utils/jwt';
 import { AUTH_COOKIE_NAME } from '../utils/cookies';
 import { UserPayload } from '../types';
 import { afterCommit } from '../services/unitOfWork';
+import { authService } from '../services/auth.service';
 
 let io: SocketIOServer | null = null;
 
@@ -24,7 +25,7 @@ export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
 
   // Socket.IO Authentication Middleware
   // Rejects unauthenticated connections and identifies user + role
-  io.use((socket: Socket, next) => {
+  io.use(async (socket: Socket, next) => {
     let token: string | undefined;
 
     // 1. Handshake auth payload
@@ -51,10 +52,20 @@ export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
 
     try {
       const decoded = verifyToken(token);
-      socket.data.user = decoded;
+      // A valid JWT is not sufficient for a long-lived realtime connection:
+      // the account may have been deactivated or its role changed since the
+      // token was issued. Reload the current account before joining rooms.
+      const current = await authService.getUserById(decoded.id);
+      socket.data.user = {
+        id: current.id,
+        email: current.email,
+        role: current.role,
+        name: current.name,
+        isActive: current.isActive,
+      } satisfies UserPayload;
       next();
     } catch {
-      return next(new Error('INVALID_TOKEN'));
+      return next(new Error('SOCKET_AUTH_REJECTED'));
     }
   });
 
