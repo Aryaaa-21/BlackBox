@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { demoController } from '../controllers/demo.controller';
 import { config } from '../config/env';
 import { AppError } from '../middleware/error.middleware';
+import { authenticate, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -32,12 +33,17 @@ router.get('/info', demoController.getDemoInfo);
  * POST /api/v1/demo/reset
  * Clean demo data and re-seed the "Campus Emergency Operations" mission.
  */
-router.post('/reset', demoController.resetDemo);
+router.post('/reset', authenticate, requireRole('COMMANDER'), demoController.resetDemo);
 
 /**
  * POST /api/v1/demo/trigger-conflict
  * Modify a task on the server while client is offline to demonstrate conflict detection.
  */
-router.post('/trigger-conflict', demoController.triggerConflict);
+router.post(
+  '/trigger-conflict',
+  authenticate,
+  requireRole('COMMANDER'),
+  demoController.triggerConflict
+);
 
 export default router;

@@ -7,20 +7,22 @@
  *
  * Rules:
  * - Processes mutations oldest-first (deterministic ordering)
- * - Checks idempotency before executing — no double execution
- * - Detects conflicts using baseUpdatedAt (optimistic concurrency)
+ * - Replays durable receipts and serializes same-key requests in this process
+ * - Detects conflicts using baseVersion, with legacy baseUpdatedAt compatibility
  * - Does NOT fail the entire batch if one mutation fails
  * - Returns structured per-mutation results
  * - Creates MissionEvent for every successful mutation
- * - Broadcasts via Socket.IO AFTER successful DB write
+ * - Commits entity, event and receipt atomically; broadcasts only after commit
  */
 
 import mongoose from 'mongoose';
+import { config } from '../config/env';
 import { Task } from '../models/Task';
 import { Mission } from '../models/Mission';
 import { MissionMember } from '../models/MissionMember';
+import { SyncConflict } from '../models/SyncConflict';
 import { AppError } from '../middleware/error.middleware';
-import { idempotencyService, mutationFingerprint } from './idempotency.service';
+import { idempotencyService, IdempotencyIdentity, mutationFingerprint } from './idempotency.service';
 import { conflictService } from './conflict.service';
 import { missionEventService } from './missionEvent.service';
 import { taskService } from './task.service';
@@ -30,9 +32,14 @@ import {
   EventTargetType,
   EventSource,
 } from '../types';
-import { getIO } from '../sockets/socket';
-import { updateTaskSchema } from '../validators/task.validator';
+import {
+  assignTaskSchema,
+  createTaskSchema,
+  updateTaskSchema,
+  updateTaskStatusSchema,
+} from '../validators/task.validator';
 import { recordObservationSchema } from '../validators/observation.validator';
+import { withUnitOfWork } from './unitOfWork';
 
 // ============================================================
 // TYPES
@@ -53,6 +60,7 @@ export interface IncomingMutation {
   createdAt: string;
   idempotencyKey: string;
   baseUpdatedAt?: string;
+  baseVersion?: number;
 }
 
 export interface MutationResult {
@@ -82,9 +90,15 @@ export interface SyncSummary {
 }
 
 const MAX_BATCH_SIZE = 20;
+class FailedMutation extends Error {
+  constructor(readonly result: MutationResult) { super(result.message); }
+}
 
 export class SyncService {
-  private readonly inFlightMutations = new Map<string, Promise<MutationResult>>();
+  private readonly inFlightMutations = new Map<string, {
+    fingerprint: string;
+    result: Promise<MutationResult>;
+  }>();
   /**
    * Process a batch of pending mutations from a client.
    * Mutations are sorted oldest-first before processing.
@@ -108,44 +122,22 @@ export class SyncService {
     const idMap = new Map<string, string>();
 
     for (const mutation of batch) {
-      console.log(`[SyncService] Processing ${mutation.operationType} (${mutation.mutationId})`);
+      if (!config.isProduction) console.debug(`[SyncService] mutation=${mutation.mutationId} operation=${mutation.operationType} entity=${mutation.entityId} state=PROCESSING`);
 
       try {
-        const existingRun = this.inFlightMutations.get(mutation.idempotencyKey);
-        let result: MutationResult;
-        if (existingRun) {
-          // A lost response can cause two HTTP requests for the same key at
-          // once. Serialize that key so side effects execute only once.
-          result = {
-            ...(await existingRun),
-            mutationId: mutation.mutationId,
-            status: 'DUPLICATE',
-          };
-        } else {
-          const run = this.processMutation(mutation, user, idMap);
-          this.inFlightMutations.set(mutation.idempotencyKey, run);
-          try {
-            result = await run;
-          } finally {
-            this.inFlightMutations.delete(mutation.idempotencyKey);
-          }
-        }
+        const result = await this.runSerialized(mutation, user, idMap);
         results.push(result);
 
-        // Update idMap from CREATE results
-        if (result.status === 'SYNCED' && result.localId && result.serverId) {
-          idMap.set(result.localId, result.serverId);
+        // A replayed CREATE is just as useful as a fresh CREATE for dependents.
+        if ((result.status === 'SYNCED' || result.status === 'DUPLICATE') &&
+          result.localId && result.serverId) {
+          idMap.set(this.localMapKey(mutation, result.localId), result.serverId);
+          idMap.set(this.localMapKey(mutation, mutation.entityId), result.serverId);
         }
       } catch (err: unknown) {
         const error = err as Error;
         console.error(`[SyncService] Unexpected error on mutation ${mutation.mutationId}:`, error.message);
-        results.push({
-          mutationId: mutation.mutationId,
-          idempotencyKey: mutation.idempotencyKey,
-          status: 'FAILED',
-          errorCode: 'SERVER_ERROR',
-          message: error.message || 'Unexpected server error',
-        });
+        results.push(this.errorToResult(mutation, error));
       }
     }
 
@@ -165,6 +157,55 @@ export class SyncService {
     return summary;
   }
 
+  private async runSerialized(
+    mutation: IncomingMutation,
+    user: UserPayload,
+    idMap: Map<string, string>
+  ): Promise<MutationResult> {
+    if (mutation.actorId !== user.id) {
+      throw new AppError('Authenticated user does not match mutation actor', 400, 'ACTOR_MISMATCH');
+    }
+    // A retained receipt is not permission to read protected data after removal.
+    if (!await this.checkMissionAccess(mutation.missionId, user)) {
+      throw new AppError('You no longer have access to this mission', 403, 'MISSION_ACCESS_DENIED');
+    }
+
+    const identity = this.mutationIdentity(mutation, user);
+    const fingerprint = mutationFingerprint(identity);
+    const existingRun = this.inFlightMutations.get(mutation.idempotencyKey);
+    if (existingRun) {
+      const previous = await existingRun.result;
+      // Waiting is not proof this was the same request. Validate both the
+      // in-flight identity and the durable receipt before replaying anything.
+      if (existingRun.fingerprint !== fingerprint) {
+        throw new AppError('Idempotency key was already used for a different mutation', 409, 'IDEMPOTENCY_KEY_REUSED');
+      }
+      await idempotencyService.checkIdempotency(mutation.idempotencyKey, identity);
+      return {
+        ...previous,
+        mutationId: mutation.mutationId,
+        status: previous.status === 'SYNCED' ? 'DUPLICATE' : previous.status,
+      };
+    }
+
+    const run = {
+      fingerprint,
+      result: withUnitOfWork(async () => {
+        const result = await this.processMutation(mutation, user, idMap);
+        // FAILED is a transport result, never permission to commit earlier writes.
+        if (result.status === 'FAILED') throw new FailedMutation(result);
+        return result;
+      })
+        .catch((error: Error) => this.errorToResult(mutation, error)),
+    };
+    this.inFlightMutations.set(mutation.idempotencyKey, run);
+    try {
+      return await run.result;
+    } finally {
+      this.inFlightMutations.delete(mutation.idempotencyKey);
+    }
+  }
+
   /**
    * Process a single mutation.
    */
@@ -174,37 +215,74 @@ export class SyncService {
     idMap: Map<string, string>
   ): Promise<MutationResult> {
     // 1. Idempotency check — has this been processed before?
-    const existing = await idempotencyService.checkIdempotency(mutation.idempotencyKey, {
-      userId: user.id,
-      deviceId: mutation.deviceId,
-      missionId: mutation.missionId,
-      operationType: mutation.operationType,
-      entityType: mutation.entityType,
-      entityId: mutation.entityId,
-      payload: mutation.payload,
-    });
+    const existing = await idempotencyService.checkIdempotency(
+      mutation.idempotencyKey,
+      this.mutationIdentity(mutation, user)
+    );
     if (existing) {
-      console.log(`[SyncService] DUPLICATE detected: ${mutation.idempotencyKey}`);
+      if (existing.outcome === 'CONFLICT') {
+        return {
+          mutationId: mutation.mutationId, idempotencyKey: mutation.idempotencyKey, status: 'CONFLICT',
+          entityType: existing.entityType, localId: existing.localId || mutation.entityId,
+          serverId: existing.serverId || undefined,
+          conflict: existing.result as unknown as NonNullable<MutationResult['conflict']>,
+        };
+      }
+      if (!config.isProduction) console.debug(`[SyncService] mutation=${mutation.mutationId} state=DUPLICATE`);
       return {
         mutationId: mutation.mutationId,
         idempotencyKey: mutation.idempotencyKey,
         status: 'DUPLICATE',
+        entityType: existing.entityType,
         localId: existing.localId || undefined,
         serverId: existing.serverId || undefined,
         entity: existing.result,
-        message: 'Mutation was already processed',
+        message: existing.fingerprint
+          ? 'Mutation was already processed'
+          : 'Mutation was already processed (legacy receipt: original payload cannot be verified)',
       };
     }
 
-    // 2. Validate actor matches authenticated user
-    if (mutation.actorId !== user.id) {
+    const priorConflict = await SyncConflict.findOne({ idempotencyKey: mutation.idempotencyKey });
+    if (priorConflict) {
+      if (priorConflict.requestFingerprint !== mutationFingerprint(this.mutationIdentity(mutation, user))) {
+        throw new AppError('Idempotency key was already used for a different conflicting mutation', 409, 'IDEMPOTENCY_KEY_REUSED');
+      }
+      return {
+        mutationId: mutation.mutationId, idempotencyKey: mutation.idempotencyKey, status: 'CONFLICT',
+        entityType: priorConflict.entityType, localId: mutation.entityId, serverId: priorConflict.entityId,
+        conflict: { conflictId: priorConflict.id, localState: priorConflict.localState, serverState: priorConflict.serverState },
+      };
+    }
+
+    // 2. Validate operation/entity pairing even for internal callers that do
+    // not pass through the HTTP batch validator.
+    const expectedEntity = mutation.operationType === 'RECORD_OBSERVATION' ? 'EVENT' : 'TASK';
+    const taskOperations = ['CREATE_TASK', 'UPDATE_TASK_STATUS', 'ASSIGN_TASK', 'UNASSIGN_TASK', 'UPDATE_TASK'];
+    if (mutation.operationType !== 'RECORD_OBSERVATION' && !taskOperations.includes(mutation.operationType)) {
       return {
         mutationId: mutation.mutationId,
         idempotencyKey: mutation.idempotencyKey,
         status: 'FAILED',
-        errorCode: 'ACTOR_MISMATCH',
-        message: 'Authenticated user does not match mutation actor',
+        errorCode: 'UNKNOWN_OPERATION',
+        message: `Unknown operationType: ${mutation.operationType}`,
       };
+    }
+    if (mutation.entityType !== expectedEntity) {
+      throw new AppError(`${mutation.operationType} requires entityType ${expectedEntity}`, 400, 'VALIDATION_ERROR');
+    }
+    if (!mutation.payload || typeof mutation.payload !== 'object' || Array.isArray(mutation.payload)) {
+      throw new AppError('Mutation payload must be an object', 400, 'VALIDATION_ERROR');
+    }
+    if (mutation.baseUpdatedAt !== undefined &&
+      (typeof mutation.baseUpdatedAt !== 'string' || !Number.isFinite(Date.parse(mutation.baseUpdatedAt)))) {
+      throw new AppError('baseUpdatedAt must be a valid timestamp', 400, 'VALIDATION_ERROR');
+    }
+    if (mutation.baseVersion !== undefined && (!Number.isSafeInteger(mutation.baseVersion) || mutation.baseVersion < 0)) {
+      throw new AppError('baseVersion must be a non-negative safe integer', 400, 'VALIDATION_ERROR');
+    }
+    if (typeof mutation.clientCreatedAt !== 'string' || !Number.isFinite(Date.parse(mutation.clientCreatedAt))) {
+      throw new AppError('clientCreatedAt must be a valid timestamp', 400, 'VALIDATION_ERROR');
     }
 
     // 3. Validate mission access
@@ -221,9 +299,19 @@ export class SyncService {
 
     // 4. Resolve entityId: if the entity was created offline, map localId → serverId
     let resolvedEntityId = mutation.entityId;
-    if (idMap.has(mutation.entityId)) {
-      resolvedEntityId = idMap.get(mutation.entityId)!;
-      console.log(`[SyncService] Resolved localId ${mutation.entityId} → serverId ${resolvedEntityId}`);
+    if (mutation.operationType !== 'CREATE_TASK' && mutation.entityType === 'TASK') {
+      const mapped = idMap.get(this.localMapKey(mutation, mutation.entityId)) ||
+        await idempotencyService.resolveLocalId({
+          userId: user.id,
+          deviceId: mutation.deviceId,
+          missionId: mutation.missionId,
+          entityType: mutation.entityType,
+          localId: mutation.entityId,
+        });
+      if (mapped) {
+        resolvedEntityId = mapped;
+        idMap.set(this.localMapKey(mutation, mutation.entityId), mapped);
+      }
     }
 
     // 5. Dispatch to the appropriate handler
@@ -261,14 +349,22 @@ export class SyncService {
     user: UserPayload
   ): Promise<MutationResult> {
     const { payload, missionId } = mutation;
-    const localId = (payload.localId as string) || mutation.entityId;
 
     try {
-      const task = await taskService.createTask(missionId, user.id, {
-        title: payload.title as string,
-        description: (payload.description as string) || '',
-        priority: (payload.priority as any) || 'MEDIUM',
-        assignedTo: payload.assignedTo as string | undefined,
+      const { localId: requestedLocalId, ...input } = payload;
+      const parsed = createTaskSchema.strict().safeParse(input);
+      if (!parsed.success) {
+        throw new AppError(parsed.error.errors.map((error) => error.message).join('; '), 400, 'VALIDATION_ERROR');
+      }
+      if (requestedLocalId !== undefined && (typeof requestedLocalId !== 'string' || !requestedLocalId.trim())) {
+        throw new AppError('localId must be a non-empty string', 400, 'VALIDATION_ERROR');
+      }
+      const localId = (requestedLocalId as string | undefined) || mutation.entityId;
+      const task = await taskService.createTask(missionId, user.id, parsed.data, {
+        idempotencyKey: mutation.idempotencyKey,
+        clientCreatedAt: mutation.clientCreatedAt,
+        deviceId: mutation.deviceId,
+        mutationId: mutation.mutationId,
       });
 
       const entity = task.toJSON() as Record<string, unknown>;
@@ -286,6 +382,7 @@ export class SyncService {
         localId,
         serverId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -298,7 +395,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -308,7 +405,6 @@ export class SyncService {
     user: UserPayload
   ): Promise<MutationResult> {
     const { payload, missionId } = mutation;
-    const newStatus = payload.status as string;
 
     // Check if entity ID is still a local (unresolved) ID
     if (resolvedEntityId.startsWith('local-') || !mongoose.Types.ObjectId.isValid(resolvedEntityId)) {
@@ -322,6 +418,10 @@ export class SyncService {
     }
 
     try {
+      const parsed = updateTaskStatusSchema.strict().safeParse(payload);
+      if (!parsed.success) {
+        throw new AppError(parsed.error.errors.map((error) => error.message).join('; '), 400, 'VALIDATION_ERROR');
+      }
       // Conflict detection: compare baseUpdatedAt to server's updatedAt
       const serverTask = await Task.findById(resolvedEntityId);
       if (!serverTask) {
@@ -343,51 +443,20 @@ export class SyncService {
         };
       }
 
-      if (mutation.baseUpdatedAt) {
-        const serverTime = new Date(serverTask.updatedAt).toISOString();
-        const baseTime = new Date(mutation.baseUpdatedAt).toISOString();
-        // Allow 1 second tolerance for timestamp rounding
-        const serverMs = new Date(serverTask.updatedAt).getTime();
-        const baseMs = new Date(mutation.baseUpdatedAt).getTime();
-
-        if (serverMs > baseMs + 1000) {
-          console.log(`[SyncService] CONFLICT detected on ${resolvedEntityId}: server=${serverTime} base=${baseTime}`);
-
-          const conflict = await conflictService.createConflict({
-            mutationId: mutation.mutationId,
-            idempotencyKey: mutation.idempotencyKey,
-            missionId,
-            entityType: 'TASK',
-            entityId: resolvedEntityId,
-            operationType: mutation.operationType,
-            actorId: user.id,
-            deviceId: mutation.deviceId,
-            localState: { ...payload, entityId: resolvedEntityId },
-            serverState: serverTask.toJSON() as Record<string, unknown>,
-            baseState: { updatedAt: mutation.baseUpdatedAt },
-          });
-
-          return {
-            mutationId: mutation.mutationId,
-            idempotencyKey: mutation.idempotencyKey,
-            status: 'CONFLICT',
-            entityType: 'TASK',
-            localId: mutation.entityId,
-            serverId: resolvedEntityId,
-            conflict: {
-              conflictId: conflict.id,
-              localState: { ...payload },
-              serverState: serverTask.toJSON() as Record<string, unknown>,
-            },
-          };
-        }
-      }
+      const conflict = await this.detectTaskConflict(mutation, resolvedEntityId, parsed.data);
+      if (conflict) return conflict;
 
       // Apply the status update
       const updatedTask = await taskService.updateTaskStatus(
         resolvedEntityId,
         user,
-        newStatus as any
+        parsed.data.status,
+        {
+          idempotencyKey: mutation.idempotencyKey,
+          clientCreatedAt: mutation.clientCreatedAt,
+          deviceId: mutation.deviceId,
+          mutationId: mutation.mutationId,
+        }
       );
 
       const entity = updatedTask.toJSON() as Record<string, unknown>;
@@ -400,10 +469,11 @@ export class SyncService {
         missionId,
         operationType: mutation.operationType,
         entityType: mutation.entityType,
-        entityId: resolvedEntityId,
+        entityId: mutation.entityId,
         localId: mutation.entityId,
         serverId: resolvedEntityId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -416,7 +486,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -438,6 +508,10 @@ export class SyncService {
     }
 
     try {
+      const parsed = assignTaskSchema.strict().safeParse(payload);
+      if (!parsed.success) {
+        throw new AppError(parsed.error.errors.map((error) => error.message).join('; '), 400, 'VALIDATION_ERROR');
+      }
       const task = await Task.findById(resolvedEntityId);
       if (!task || task.missionId.toString() !== missionId) {
         return {
@@ -448,10 +522,19 @@ export class SyncService {
           message: 'Task does not belong to the target mission',
         };
       }
+      const conflict = await this.detectTaskConflict(mutation, resolvedEntityId, parsed.data);
+      if (conflict) return conflict;
+
       const updatedTask = await taskService.assignTask(
         resolvedEntityId,
         user.id,
-        payload.userId as string
+        parsed.data.userId,
+        {
+          idempotencyKey: mutation.idempotencyKey,
+          clientCreatedAt: mutation.clientCreatedAt,
+          deviceId: mutation.deviceId,
+          mutationId: mutation.mutationId,
+        }
       );
 
       const entity = updatedTask.toJSON() as Record<string, unknown>;
@@ -463,10 +546,11 @@ export class SyncService {
         missionId,
         operationType: mutation.operationType,
         entityType: mutation.entityType,
-        entityId: resolvedEntityId,
+        entityId: mutation.entityId,
         localId: mutation.entityId,
         serverId: resolvedEntityId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -479,7 +563,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -518,6 +602,8 @@ export class SyncService {
       const updatedTask = await taskService.unassignTask(resolvedEntityId, user.id, {
         idempotencyKey: mutation.idempotencyKey,
         clientCreatedAt: mutation.clientCreatedAt,
+        deviceId: mutation.deviceId,
+        mutationId: mutation.mutationId,
       });
       const entity = updatedTask.toJSON() as Record<string, unknown>;
 
@@ -528,10 +614,11 @@ export class SyncService {
         missionId,
         operationType: mutation.operationType,
         entityType: mutation.entityType,
-        entityId: resolvedEntityId,
+        entityId: mutation.entityId,
         localId: mutation.entityId,
         serverId: resolvedEntityId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -544,7 +631,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -598,6 +685,8 @@ export class SyncService {
         {
           idempotencyKey: mutation.idempotencyKey,
           clientCreatedAt: mutation.clientCreatedAt,
+          deviceId: mutation.deviceId,
+          mutationId: mutation.mutationId,
         }
       );
 
@@ -610,10 +699,11 @@ export class SyncService {
         missionId,
         operationType: mutation.operationType,
         entityType: mutation.entityType,
-        entityId: resolvedEntityId,
+        entityId: mutation.entityId,
         localId: mutation.entityId,
         serverId: resolvedEntityId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -626,7 +716,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -661,6 +751,8 @@ export class SyncService {
         source: EventSource.USER,
         clientCreatedAt: new Date(mutation.clientCreatedAt),
         idempotencyKey: mutation.idempotencyKey,
+        deviceId: mutation.deviceId,
+        mutationId: mutation.mutationId,
       });
       const entity = event.toJSON() as Record<string, unknown>;
       const serverId = event._id.toString();
@@ -676,6 +768,7 @@ export class SyncService {
         localId: mutation.entityId,
         serverId,
         result: entity,
+        fingerprint: mutationFingerprint(this.mutationIdentity(mutation, user)),
       });
 
       return {
@@ -688,7 +781,7 @@ export class SyncService {
         entity,
       };
     } catch (err: unknown) {
-      return this.errorToResult(mutation, err as Error);
+      throw err;
     }
   }
 
@@ -696,26 +789,35 @@ export class SyncService {
   // HELPERS
   // ============================================================
 
+  private mutationIdentity(mutation: IncomingMutation, user: UserPayload): IdempotencyIdentity {
+    return {
+      userId: user.id,
+      deviceId: mutation.deviceId,
+      missionId: mutation.missionId,
+      operationType: mutation.operationType,
+      entityType: mutation.entityType,
+      entityId: mutation.entityId,
+      payload: mutation.payload,
+      baseUpdatedAt: mutation.baseUpdatedAt,
+      baseVersion: mutation.baseVersion,
+      clientCreatedAt: mutation.clientCreatedAt,
+    };
+  }
+
+  private localMapKey(mutation: IncomingMutation, localId: string): string {
+    return JSON.stringify([mutation.actorId, mutation.deviceId, mutation.missionId, mutation.entityType, localId]);
+  }
+
+  // The in-process serializer is only an optimization. Mongo transactions and
+  // unique retained receipts are the cross-process execution boundary.
+
   private async checkMissionAccess(missionId: string, user: UserPayload): Promise<boolean> {
-    try {
-      if (!mongoose.Types.ObjectId.isValid(missionId)) return false;
-
-      const mission = await Mission.findById(missionId);
-      if (!mission) return false;
-
-      if (user.role === 'COMMANDER') {
-        return mission.createdBy.toString() === user.id;
-      }
-
-      const membership = await MissionMember.findOne({
-        missionId,
-        userId: new mongoose.Types.ObjectId(user.id),
-        status: 'ACTIVE',
-      });
-      return !!membership;
-    } catch {
-      return false;
-    }
+    if (!mongoose.Types.ObjectId.isValid(missionId)) return false;
+    // Database outages are retryable server failures, not permanent revocation.
+    const mission = await Mission.findById(missionId);
+    if (!mission) return false;
+    if (user.role === 'COMMANDER') return mission.createdBy.toString() === user.id;
+    return !!await MissionMember.findOne({ missionId, userId: new mongoose.Types.ObjectId(user.id), status: 'ACTIVE' });
   }
 
   private async detectTaskConflict(
@@ -723,16 +825,20 @@ export class SyncService {
     taskId: string,
     localState: Record<string, unknown>
   ): Promise<MutationResult | null> {
-    if (!mutation.baseUpdatedAt) return null;
+    if (mutation.baseVersion === undefined && !mutation.baseUpdatedAt) return null;
 
     const serverTask = await Task.findById(taskId);
     if (!serverTask) return null;
 
     const serverMs = new Date(serverTask.updatedAt).getTime();
-    const baseMs = new Date(mutation.baseUpdatedAt).getTime();
-    if (serverMs <= baseMs + 1000) return null;
+    const baseMs = mutation.baseUpdatedAt ? new Date(mutation.baseUpdatedAt).getTime() : 0;
+    const stale = mutation.baseVersion !== undefined
+      ? serverTask.version !== mutation.baseVersion
+      : serverMs > baseMs;
+    if (!stale) return null;
 
     const conflict = await conflictService.createConflict({
+      requestFingerprint: mutationFingerprint(this.mutationIdentity(mutation, { id: mutation.actorId } as UserPayload)),
       mutationId: mutation.mutationId,
       idempotencyKey: mutation.idempotencyKey,
       missionId: mutation.missionId,
@@ -743,10 +849,10 @@ export class SyncService {
       deviceId: mutation.deviceId,
       localState: { ...localState, entityId: taskId },
       serverState: serverTask.toJSON() as Record<string, unknown>,
-      baseState: { updatedAt: mutation.baseUpdatedAt },
+      baseState: { updatedAt: mutation.baseUpdatedAt, ...(mutation.baseVersion !== undefined ? { version: mutation.baseVersion } : {}) },
     });
 
-    return {
+    const result: MutationResult = {
       mutationId: mutation.mutationId,
       idempotencyKey: mutation.idempotencyKey,
       status: 'CONFLICT',
@@ -759,13 +865,28 @@ export class SyncService {
         serverState: serverTask.toJSON() as Record<string, unknown>,
       },
     };
+    // A conflict also claims the global request key. Without this shared unique
+    // receipt, a success and a conflict in different missions could both commit
+    // under one key because their audit records live in separate collections.
+    await idempotencyService.storeResult({
+      idempotencyKey: mutation.idempotencyKey,
+      userId: mutation.actorId, deviceId: mutation.deviceId, missionId: mutation.missionId,
+      operationType: mutation.operationType, entityType: mutation.entityType, entityId: mutation.entityId,
+      localId: mutation.entityId, serverId: taskId, outcome: 'CONFLICT',
+      result: { ...result.conflict! },
+      fingerprint: mutationFingerprint(this.mutationIdentity(mutation, { id: mutation.actorId } as UserPayload)),
+    });
+    return result;
   }
 
   private errorToResult(mutation: IncomingMutation, err: Error): MutationResult {
+    if (err instanceof FailedMutation) return err.result;
     const appError = err as AppError;
-    const statusCode = (appError as any).statusCode || 500;
+    const statusCode = appError.statusCode || 500;
 
-    let errorCode = (appError as any).code || 'SERVER_ERROR';
+    let errorCode = appError.code || (statusCode === 400 || err.name === 'ValidationError'
+      ? 'VALIDATION_ERROR'
+      : 'SERVER_ERROR');
 
     if (statusCode === 403) errorCode = 'PERMISSION_DENIED';
     else if (statusCode === 404) errorCode = 'NOT_FOUND';

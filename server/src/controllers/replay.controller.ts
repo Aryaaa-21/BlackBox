@@ -30,14 +30,29 @@ export class ReplayController {
         throw new AppError('Mission ID is required', 400, 'MISSING_MISSION_ID');
       }
 
-      const { from, to, eventType, limit, cursor } = req.query;
+      const queryString = (name: string): string | undefined => {
+        const value = req.query[name];
+        if (value === undefined) return undefined;
+        if (typeof value !== 'string') {
+          throw new AppError(`Replay ${name} must be supplied once as a string`, 400, 'INVALID_REPLAY_QUERY');
+        }
+        return value;
+      };
+      const from = queryString('from');
+      const to = queryString('to');
+      const eventType = queryString('eventType');
+      const cursor = queryString('cursor');
+      const limit = queryString('limit');
+      if (limit !== undefined && !/^\d+$/.test(limit)) {
+        throw new AppError('Replay limit must be a positive integer', 400, 'INVALID_REPLAY_LIMIT');
+      }
 
       const replayData = await replayService.getMissionReplay(missionId, user, {
-        from: typeof from === 'string' ? from : undefined,
-        to: typeof to === 'string' ? to : undefined,
-        eventType: typeof eventType === 'string' ? eventType : undefined,
-        limit: limit ? Number(limit) : undefined,
-        cursor: typeof cursor === 'string' ? cursor : undefined,
+        from,
+        to,
+        eventType,
+        limit: limit === undefined ? undefined : Number(limit),
+        cursor,
       });
 
       res.status(200).json({

@@ -64,6 +64,7 @@ export interface TaskStats {
 
 export enum MissionEventType {
   MISSION_CREATED = 'MISSION_CREATED',
+  MISSION_UPDATED = 'MISSION_UPDATED',
   MISSION_STARTED = 'MISSION_STARTED',
   MISSION_COMPLETED = 'MISSION_COMPLETED',
   MISSION_CANCELLED = 'MISSION_CANCELLED',
@@ -88,6 +89,7 @@ export enum MissionEventType {
   SYNC_STARTED = 'SYNC_STARTED',
   SYNC_COMPLETED = 'SYNC_COMPLETED',
   SYNC_CONFLICT = 'SYNC_CONFLICT',
+  CONFLICT_RESOLVED = 'CONFLICT_RESOLVED',
 }
 
 export enum EventTargetType {
@@ -116,6 +118,8 @@ export interface CreateMissionEventInput {
   source?: EventSource;
   clientCreatedAt?: Date;
   idempotencyKey?: string;
+  deviceId?: string;
+  mutationId?: string;
 }
 
 export interface EventQueryOptions {
@@ -123,4 +127,3 @@ export interface EventQueryOptions {
   limit?: number;
   eventType?: MissionEventType;
 }
-

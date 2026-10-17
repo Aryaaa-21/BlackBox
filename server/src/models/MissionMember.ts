@@ -1,8 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { MemberRole, MemberStatus } from '../types';
+import { exposeVersion } from './versioning';
 
 export interface IMissionMemberDocument extends Document {
   id: string;
+  version: number;
   missionId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId | { id: string; name: string; email: string; role?: string };
   role: MemberRole;
@@ -71,6 +73,7 @@ const MissionMemberSchema = new Schema<IMissionMemberDocument>(
 MissionMemberSchema.index({ missionId: 1, userId: 1 }, { unique: true });
 MissionMemberSchema.index({ missionId: 1, status: 1 });
 
+exposeVersion(MissionMemberSchema);
 export const MissionMember = mongoose.model<IMissionMemberDocument>(
   'MissionMember',
   MissionMemberSchema

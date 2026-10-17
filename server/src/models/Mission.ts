@@ -1,8 +1,11 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { MissionStatus, MissionSeverity } from '../types';
+import { exposeVersion } from './versioning';
 
 export interface IMissionDocument extends Document {
   id: string;
+  version: number;
+  eventClock?: number;
   title: string;
   description: string;
   location: string;
@@ -18,6 +21,7 @@ export interface IMissionDocument extends Document {
 
 const MissionSchema = new Schema<IMissionDocument>(
   {
+    eventClock: { type: Number, select: false },
     title: {
       type: String,
       required: [true, 'Mission title is required'],
@@ -76,6 +80,7 @@ const MissionSchema = new Schema<IMissionDocument>(
         ret.id = (ret._id as mongoose.Types.ObjectId).toString();
         delete ret._id;
         delete ret.__v;
+        delete ret.eventClock;
         return ret;
       },
     },
@@ -85,6 +90,7 @@ const MissionSchema = new Schema<IMissionDocument>(
         ret.id = (ret._id as mongoose.Types.ObjectId).toString();
         delete ret._id;
         delete ret.__v;
+        delete ret.eventClock;
         return ret;
       },
     },
@@ -96,4 +102,5 @@ MissionSchema.index({ createdBy: 1, status: 1 });
 MissionSchema.index({ status: 1, createdAt: -1 });
 MissionSchema.index({ createdAt: -1 });
 
+exposeVersion(MissionSchema);
 export const Mission = mongoose.model<IMissionDocument>('Mission', MissionSchema);

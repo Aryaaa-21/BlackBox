@@ -6,6 +6,7 @@ import { UserPayload, MissionStats, PaginationMeta, MissionEventType, EventTarge
 import { CreateMissionInput, UpdateMissionInput, MissionQueryInput } from '../validators/mission.validator';
 import { getIO } from '../sockets/socket';
 import { missionEventService } from './missionEvent.service';
+import { afterCommit, inUnitOfWork, withUnitOfWork } from './unitOfWork';
 
 export class MissionService {
   /**
@@ -21,20 +22,24 @@ export class MissionService {
    * Helper to emit socket events safely
    */
   private emitSocketEvent(room: string, event: string, payload: unknown): void {
-    try {
-      const io = getIO();
-      if (io) {
-        io.to(room).emit(event, payload);
+    const snapshot: unknown = JSON.parse(JSON.stringify(payload));
+    afterCommit(() => {
+      try {
+        const io = getIO();
+        if (io) {
+          io.to(room).emit(event, snapshot);
+        }
+      } catch {
+        // Sockets might not be initialized in isolated unit test runners
       }
-    } catch {
-      // Sockets might not be initialized in isolated unit test runners
-    }
+    });
   }
 
   /**
    * Create Mission (Commander only) - Auto-registers commander in MissionMember
    */
   async createMission(userId: string, input: CreateMissionInput): Promise<IMissionDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.createMission(userId, input));
     const mission = new Mission({
       title: input.title,
       description: input.description,
@@ -68,6 +73,17 @@ export class MissionService {
         missionId: mission._id.toString(),
         title: mission.title,
         severity: mission.severity,
+        description: mission.description,
+        location: mission.location,
+        status: mission.status,
+        createdBy: userId,
+        version: mission.version,
+        commanderMembershipId: commanderMembership._id.toString(),
+        createdAt: mission.createdAt,
+        updatedAt: mission.updatedAt,
+        startedAt: mission.startedAt ?? null,
+        completedAt: mission.completedAt ?? null,
+        cancelledAt: mission.cancelledAt ?? null,
       },
       source: EventSource.USER,
     });
@@ -214,6 +230,7 @@ export class MissionService {
     userId: string,
     input: UpdateMissionInput
   ): Promise<IMissionDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.updateMission(missionId, userId, input));
     this.validateObjectId(missionId);
 
     const mission = await Mission.findById(missionId);
@@ -242,6 +259,17 @@ export class MissionService {
     await mission.save();
     await mission.populate('createdBy', 'id name email role');
 
+    await missionEventService.createMissionEvent({
+      missionId, actorId: userId, eventType: MissionEventType.MISSION_UPDATED,
+      targetType: EventTargetType.MISSION, targetId: missionId,
+      payload: { title: mission.title, description: mission.description, location: mission.location,
+        severity: mission.severity, status: mission.status, createdBy: userId, version: mission.version,
+        createdAt: mission.createdAt, updatedAt: mission.updatedAt,
+        startedAt: mission.startedAt ?? null, completedAt: mission.completedAt ?? null,
+        cancelledAt: mission.cancelledAt ?? null },
+      source: EventSource.USER,
+    });
+
     // Realtime broadcast to mission room and creator
     this.emitSocketEvent(`mission:${missionId}`, 'mission:updated', mission);
     this.emitSocketEvent(`user:${userId}`, 'mission:updated', mission);
@@ -253,6 +281,7 @@ export class MissionService {
    * Start Mission (DRAFT -> ACTIVE)
    */
   async startMission(missionId: string, userId: string): Promise<IMissionDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.startMission(missionId, userId));
     this.validateObjectId(missionId);
 
     const mission = await Mission.findById(missionId);
@@ -299,6 +328,12 @@ export class MissionService {
         missionId: mission._id.toString(),
         title: mission.title,
         startedAt: mission.startedAt,
+        status: mission.status,
+        version: mission.version,
+        createdAt: mission.createdAt,
+        updatedAt: mission.updatedAt,
+        completedAt: mission.completedAt ?? null,
+        cancelledAt: mission.cancelledAt ?? null,
       },
       source: EventSource.USER,
     });
@@ -314,6 +349,7 @@ export class MissionService {
    * Complete Mission (ACTIVE -> COMPLETED)
    */
   async completeMission(missionId: string, userId: string): Promise<IMissionDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.completeMission(missionId, userId));
     this.validateObjectId(missionId);
 
     const mission = await Mission.findById(missionId);
@@ -359,6 +395,12 @@ export class MissionService {
         missionId: mission._id.toString(),
         title: mission.title,
         completedAt: mission.completedAt,
+        status: mission.status,
+        version: mission.version,
+        createdAt: mission.createdAt,
+        updatedAt: mission.updatedAt,
+        startedAt: mission.startedAt ?? null,
+        cancelledAt: mission.cancelledAt ?? null,
       },
       source: EventSource.USER,
     });
@@ -374,6 +416,7 @@ export class MissionService {
    * Cancel Mission (DRAFT or ACTIVE -> CANCELLED)
    */
   async cancelMission(missionId: string, userId: string): Promise<IMissionDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.cancelMission(missionId, userId));
     this.validateObjectId(missionId);
 
     const mission = await Mission.findById(missionId);
@@ -409,6 +452,12 @@ export class MissionService {
         missionId: mission._id.toString(),
         title: mission.title,
         cancelledAt: mission.cancelledAt,
+        status: mission.status,
+        version: mission.version,
+        createdAt: mission.createdAt,
+        updatedAt: mission.updatedAt,
+        startedAt: mission.startedAt ?? null,
+        completedAt: mission.completedAt ?? null,
       },
       source: EventSource.USER,
     });

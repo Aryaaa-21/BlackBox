@@ -35,7 +35,10 @@ export class AuthService {
       name: input.name,
       email: input.email,
       passwordHash: hashedPassword,
-      role: input.role || 'FIELD_OPERATOR',
+      // Public registration never provisions elevated accounts. Commander
+      // accounts must be created through an already-authorized provisioning
+      // path (or the controlled demo seed), not by trusting request input.
+      role: 'FIELD_OPERATOR',
       isActive: true,
     });
 

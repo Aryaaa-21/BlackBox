@@ -1,0 +1,10 @@
+{
+  "name": "BlackBox Operations",
+  "short_name": "BlackBox",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050B14",
+  "theme_color": "#050B14",
+  "description": "Offline-first mission operations console.",
+  "icons": []
+}

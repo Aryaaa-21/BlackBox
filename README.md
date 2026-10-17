@@ -1,199 +1,200 @@
-# BLACKBOX — Resilient Operations Platform
+# BlackBox
 
-> **Offline-First Mission Coordination & Tactical Operations**  
-> *"The network can fail. The operation shouldn't."*
+## Resilient Operations Platform
 
----
+**BlackBox keeps teams coordinated when connectivity disappears.**
 
-## 1. Executive Summary & What BlackBox Is
-
-**BlackBox** is a resilient, offline-first operational platform engineered to keep command centers and field operatives coordinated in environments where network connectivity is intermittent, degraded, or completely severed.
-
-Unlike traditional web applications that stall, show blocking spinners, or drop mutations when connectivity drops, BlackBox treats **OFFLINE as a first-class operational state**. Users remain inside the application, tasks continue to transition, operational logs are appended to local IndexedDB storage, mutations queue deterministically, and upon reconnection the Phase 7 synchronization engine resolves divergences with full forensic audit replay.
-
----
-
-## 2. Core Architecture & Operational Lifecycle
-
-```
-ONLINE (Socket.IO Stream)
-   │
-   ▼ [Network Severed / Simulated Offline]
-OFFLINE OPERATIONS (IndexedDB Cache + Client State Machine)
-   │  • Tasks execute locally
-   │  • Local MissionEvents appended
-   │  • Mutation Queue records pending actions
-   │
-   ▼ [Network Restored]
-PUSH SYNCHRONIZATION (Phase 7 Sync Engine)
-   │  • Batches queued mutations to /api/v1/sync
-   │  • Server validates against MongoDB & emits live room broadcasts
-   │  • Detects upstream conflicts (e.g., remote server override)
-   │
-   ▼ [Conflict Detected]
-EXPLICIT CONFLICT RESOLUTION
-   │  • Side-by-side visual diff (Local Offline vs. Server State)
-   │  • Operator selects "Keep My Change" or "Keep Server"
-   │
-   ▼
-FORENSIC MISSION REPLAY
-      • Reconstructs exact second-by-second historical operational state
+```text
+OFFLINE → OPERATE
+RECONNECT → SYNC
+CONFLICT → RESOLVE
+HISTORY → REPLAY
 ```
 
----
+BlackBox is an offline-first mission coordination platform for commanders and field operators working in degraded or intermittent network conditions. The product keeps supported work usable locally, synchronizes durable mutations when connectivity returns, makes conflicts explicit, and reconstructs the operation from immutable MissionEvents.
 
-## 3. Technology Stack
+## Why it matters
 
-### Frontend
-- **Framework & Language:** React 18, TypeScript, Vite
-- **Styling:** Vanilla Tailwind CSS with custom BlackBox dark cyber-tactical design system
-- **State Management:** Zustand (reactive, normalized stores for missions, tasks, team, replay, offline, and connectivity)
-- **Local Storage:** IndexedDB (via Dexie-compatible indexed database) for missions, tasks, members, events, and mutation queue
-- **Networking:** Axios with request/response interceptors & token injection
-- **Real-Time Stream:** Socket.IO Client (room-based dispatching)
-- **PWA:** Vite PWA Plugin (`vite-plugin-pwa`) with offline service worker precaching and manifest
+Traditional CRUD applications often turn a network interruption into lost work, ambiguous state, or a blocked operator. BlackBox treats connectivity as an operational state:
 
-### Backend
-- **Runtime:** Node.js (v20+ / v24)
-- **Server Framework:** Express.js + TypeScript
-- **Database:** MongoDB (v7+) with Mongoose schemas
-- **Authentication:** JSON Web Tokens (JWT) + `bcryptjs` password hashing
-- **Validation:** Zod schemas for all request payloads
-- **Real-Time Engine:** Socket.IO Server with operational mission rooms
-- **Security:** Helmet, CORS, sanitized error handlers, and isolated demo endpoints
+- mission, task, team, and event data are cached in IndexedDB;
+- supported mutations are written to a durable queue before transport;
+- local IDs and dependent mutations survive reloads and retries;
+- server writes use idempotency, optimistic concurrency, and transactions;
+- Socket.IO distributes committed changes to mission rooms; and
+- Mission Replay reduces immutable events into historical state.
 
----
+## Core features
 
-## 4. Environment Variables
+- Offline-first task and observation workflows
+- Durable, dependency-aware synchronization
+- Canonical idempotency and response-loss recovery
+- Optimistic concurrency and explicit conflict resolution
+- Real-time mission-room updates with post-commit delivery
+- Immutable MissionEvents and deterministic replay
+- Role-aware commander and field-operator access
+- Isolated demo reset and conflict trigger in development/demo mode
 
-### Backend Configuration (`server/.env`)
+## Architecture
+
+```text
+React + TypeScript + Vite
+        ↓
+Zustand stores and API services
+        ↙                         ↘
+IndexedDB / Dexie              Express REST + Socket.IO
+        ↓                         ↓
+Durable mutation queue        Mongoose / MongoDB replica set
+        └────────────── sync + MissionEvents ──────────────┘
+                                      ↓
+                           deterministic replay reducer
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/OFFLINE_SYNC.md](docs/OFFLINE_SYNC.md), and [docs/REPLAY.md](docs/REPLAY.md) for implementation detail.
+The final release gate is recorded in [docs/PHASE6_FINAL_RELEASE_REPORT.md](docs/PHASE6_FINAL_RELEASE_REPORT.md), with test evidence in [docs/FINAL_TEST_MATRIX.md](docs/FINAL_TEST_MATRIX.md) and known limitations in [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+## Technology
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, TypeScript, Vite |
+| State | Zustand |
+| Local persistence | IndexedDB via Dexie |
+| API | Axios → Express + TypeScript |
+| Database | MongoDB + Mongoose |
+| Realtime | Socket.IO |
+| Validation | Zod |
+| Auth | JWT + bcryptjs |
+| Tests | Node test runner, fake IndexedDB, Playwright |
+
+## Local setup
+
+### Prerequisites
+
+- Node.js 20+ (Node 24 is supported in the verified environment)
+- MongoDB replica set or mongos for protected transactional writes
+- npm
+
+The server can start a `MongoMemoryReplSet` fallback in non-production development/test mode when the configured MongoDB URI is unavailable. For normal local development, use a dedicated MongoDB replica set and never point tests at production data.
+
+### Install
+
 ```bash
-PORT=5000
-NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/blackbox
-JWT_SECRET=super-secret-blackbox-tactical-jwt-key-2026
-JWT_EXPIRES_IN=7d
-CLIENT_URL=http://localhost:5173
-ENABLE_DEMO_MODE=true
+npm install
 ```
 
-### Frontend Configuration (`client/.env`)
+### Configure
+
 ```bash
-VITE_API_URL=http://localhost:5000/api/v1
-VITE_SOCKET_URL=http://localhost:5000
-VITE_ENABLE_DEMO_MODE=true
+copy server/.env.example server/.env
+copy client/.env.example client/.env
 ```
 
----
+Set a local `MONGODB_URI` and a development JWT secret in `server/.env`. If using the protected demo controls, set a private `DEMO_PASSWORD` as well. Never commit `.env` files or real credentials.
 
-## 5. How to Run Locally
+### Start
 
-### 1. Start MongoDB
-Ensure MongoDB is running locally on port 27017:
+Terminal 1:
+
 ```bash
-mongod
-# Or using Docker:
-docker run -d -p 27017:27017 --name blackbox-mongo mongo:7
+npm run dev
 ```
 
-### 2. Install Dependencies & Build Backend
+Terminal 2:
+
+```bash
+npm run client
+```
+
+Open `http://localhost:5173`. The API defaults to `http://localhost:5000/api/v1`.
+
+### Production build
+
+```bash
+npm run build:server
+npm run build:client
+```
+
+The client build currently emits a Vite advisory for the main bundle being above 500 kB. This is a performance follow-up, not a build failure.
+
+## Three-minute demo
+
+1. Sign in as a commander and open an active mission.
+2. Show the team, tasks, connectivity, and live activity.
+3. Disable browser network access.
+4. Create or update supported task work and record an observation.
+5. Refresh while offline to show local persistence.
+6. Restore network and show queue synchronization.
+7. Use two clients or the controlled demo conflict path to show an explicit conflict.
+8. Resolve the conflict and open Mission Replay.
+9. Play the event history and close with: **“The network can fail. The operation shouldn't.”**
+
+The exact reproducible runbook is in [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md). Phase 4 browser evidence currently marks the complete offline/two-browser demo as not ready; do not claim browser verification beyond the report.
+
+## Testing
+
+Backend:
+
 ```bash
 cd server
-npm install
+npm run lint
 npm run build
-npm run dev
+npm test
 ```
-The server will start on `http://localhost:5000`.
 
-### 3. Install Dependencies & Start Frontend
-```bash
-cd ../client
-npm install
-npm run dev
-```
-Open your browser to `http://localhost:5173`.
-
----
-
-## 6. How to Run Automated Tests
-
-The backend test suite covers all Phase 1 through Phase 9 functionality (Authentication, Mission Lifecycle, Team Roster, Task State Machine, Real-Time Socket Events, Sync Engine, Conflict Resolution, Mission Replay, and Demo Mode):
+Client unit/integration-style tests:
 
 ```bash
-cd server
-npm run test
+cd client
+npm test
+npm run typecheck
+npm run lint
+npm run build
 ```
-**Current Test Status:** `230 PASSED, 0 FAILED`
 
-To build both client and server for production verification:
+Real browser tests:
+
 ```bash
-# Server build
-cd server && npm run build
-
-# Client build
-cd ../client && npm run build
+cd client
+npm run test:e2e:smoke
+npm run test:e2e
 ```
 
----
+The browser suite starts an isolated replica-set database and test frontend/backend. Its current limitations are recorded in [docs/PHASE4_REPORT.md](docs/PHASE4_REPORT.md).
 
-## 7. Hackathon Demo Guide & Feature Scenarios
+## Project structure
 
-BlackBox features a built-in **Phase 9 Demo HUD** (floating tab at the bottom right) designed for presentation to evaluators. It exercises **real backend endpoints, real IndexedDB, real Socket.IO, and real MongoDB** (no fake state).
+```text
+blackbox/
+├── client/                 React app, IndexedDB, sync, replay, browser tests
+├── server/                 Express API, MongoDB models, Socket.IO, tests
+├── docs/                   Architecture, operations, demo, and phase reports
+├── package.json            Workspace commands
+└── README.md
+```
 
-### Step 1: Initialize / Reset Demo
-Click the floating **`DEMO HUD`** button in the bottom right corner and select:
-**`[ ↺ Reset Demo Environment ]`** $\to$ **`Confirm Demo Reset`**.
-- Resets demo database cleanly.
-- Seeds the standard mission: **Campus Emergency Operations**.
-- Creates 4 pre-configured users (Commander Marcus Cole, Operator Arjun Mehta, Operator Priya Sharma, Operator Rahul Sen).
-- Seeds 5 realistic tasks and 14 historical MissionEvents.
-- Automatically authenticates as Commander Marcus Cole.
+The release audit intentionally retains the names `client/` and `server/` instead of renaming them to `frontend/` and `backend/`. The workspace scripts, Playwright global setup, package-lock workspace paths, environment examples, and existing documentation all use these paths. They are already cleanly separated by responsibility, and renaming them at the release gate would add integration risk without changing the architecture.
 
-### Step 2: Demonstrate Real-Time Operations (ONLINE)
-- View the active mission with its 5 tasks, team roster, and live activity feed.
-- Notice the top-right connectivity pill: **`LIVE`** with RTT latency telemetry.
+## Security
 
-### Step 3: Demonstrate Complete Network Loss (OFFLINE)
-- In the **DEMO HUD**, click **`[ ✕ Simulate Offline ]`**.
-- The top banner turns red: **`OFFLINE MODE: No network connection detected`**.
-- The connectivity indicator updates to **`OFFLINE`** and Socket.IO disconnects.
-- Navigate to task **`Inspect Main Gate`** and click **`COMPLETE`**.
-- The task completes immediately in IndexedDB, and displays a pulsing **`PENDING SYNC`** badge.
-- Refresh the browser (`F5`): The task remains completed and the mutation remains queued in IndexedDB.
+- Public registration always creates `FIELD_OPERATOR`; it cannot provision a commander.
+- Production requires a strong JWT secret.
+- Mission, replay, conflict, task, and socket access are authorization-checked.
+- Demo reset and conflict-trigger operations are environment-gated and demo-account scoped.
+- MissionEvents strip sensitive credential fields and are immutable in ordinary paths.
+- No secrets, tokens, passwords, or private keys belong in the repository.
 
-### Step 4: Demonstrate Push Synchronization (RECONNECT)
-- In the **DEMO HUD**, click **`[ ⚡ Restore Network (Sync) ]`**.
-- Sockets reconnect; the Phase 7 sync engine automatically dispatches queued mutations to `POST /api/v1/sync`.
-- The server updates MongoDB, writes a `TASK_COMPLETED` MissionEvent, and acknowledges the mutation.
-- The task badge flips to **`SYNCED`**, and the Sync Status Panel shows **`All changes synced`**.
+## Verification status
 
-### Step 5: Demonstrate Conflict Detection & Resolution
-- In the **DEMO HUD**, click **`[ ⚡ Trigger Conflict ]`**.
-- The server diverges the task upstream to `BLOCKED` with an emergency reason.
-- Upon synchronization, the Phase 7 sync engine detects version divergence and presents the **`ConflictDialog`**:
-  - **Your Offline Change:** `COMPLETED`
-  - **Current Server State:** `BLOCKED`
-- Click **`Keep My Change →`**.
-- The client dispatches resolution to `/api/v1/sync/conflicts/:id/resolve`, applying `COMPLETED` and logging `CONFLICT_RESOLVED`.
+| Area | Current status |
+|---|---|
+| Phase 1 baseline/security | Pass evidence retained in implementation and regression tests |
+| Phase 2 offline/sync reliability | Automated pass; see `docs/PHASE2_REPORT.md` |
+| Phase 3 consistency/replay | Automated pass; see `docs/PHASE3_REPORT.md` |
+| Phase 4 real-browser acceptance | **Not fully release-qualified**; see `docs/PHASE4_REPORT.md` |
+| Phase 5 demo/release packaging | Completed with documented P1s; see `docs/PHASE5_REPORT.md` |
+| Phase 6 final release gate | **NOT RELEASE READY**; see `docs/PHASE6_FINAL_RELEASE_REPORT.md` |
 
-### Step 6: Demonstrate Forensic Mission Replay
-- Click the prominent **`View Replay`** button on the mission header.
-- The **Mission Replay Workspace** displays the complete chronological event stream:
-  - Timeline scrubber with play/pause (`Space`), step forward (`Right Arrow`), step backward (`Left Arrow`).
-  - Reconstructed state panel showing task states and team status at any exact millisecond.
-  - Event telemetry details with actor identities and payloads.
+## License
 
----
-
-## 8. Demo Runbook Reference
-
-For a live presentation runbook with exact presenter script timings, refer to:  
-[`docs/DEMO_RUNBOOK.md`](file:///c:/Users/Arya%20Bhagat/Desktop/BlackBox/docs/DEMO_RUNBOOK.md)
-
----
-
-## 9. Security & Production Safeguards
-
-- **Isolated Demo Mode:** Demo accounts and missions use the dedicated `@demo.blackbox.internal` namespace. Resetting demo data never affects regular users.
-- **Environment Gate:** In production environments (`ENABLE_DEMO_MODE=false`), demo endpoints (`/api/v1/demo/*`) are completely disabled and return `403 DEMO_MODE_DISABLED`.
-- **Zero Sensitive Data Leaks:** Password hashes, JWT secrets, and connection strings are excluded from API payloads, IndexedDB, and client builds.
+See the repository license file when present.

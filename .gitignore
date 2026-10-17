@@ -5,6 +5,9 @@ node_modules/
 
 # Testing
 coverage/
+client/e2e-artifacts/
+client/e2e-report/
+client/test-results/
 
 # Production builds
 dist/

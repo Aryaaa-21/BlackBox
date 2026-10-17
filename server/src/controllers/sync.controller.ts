@@ -124,13 +124,15 @@ export const syncController = {
         return;
       }
 
-      const { resolution, mergedState } = parseResult.data;
+      const { resolution, mergedState, expectedServerUpdatedAt, expectedServerVersion } = parseResult.data;
 
       const result = await conflictService.resolveConflict(
         conflictId,
         resolution,
         user,
-        mergedState
+        mergedState,
+        expectedServerUpdatedAt,
+        expectedServerVersion
       );
 
       sendSuccess(res, result, 200, 'Conflict resolved');

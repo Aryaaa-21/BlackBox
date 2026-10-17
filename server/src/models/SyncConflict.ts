@@ -10,12 +10,32 @@
  */
 
 import mongoose, { Document, Schema } from 'mongoose';
+import { exposeVersion } from './versioning';
 
 export type ConflictStatus = 'OPEN' | 'RESOLVED' | 'DISCARDED';
 export type ConflictResolution = 'KEEP_LOCAL' | 'KEEP_SERVER' | 'MERGE';
 
+export interface IConflictResolutionMutation {
+  mutationId: string;
+  idempotencyKey: string;
+  missionId: string;
+  entityType: string;
+  entityId: string;
+  operationType: string;
+  actorId: string;
+  deviceId: string;
+  payload: Record<string, unknown>;
+  baseUpdatedAt: string;
+  baseVersion?: number;
+  clientCreatedAt: string;
+  createdAt: string;
+  resolution: 'KEEP_LOCAL' | 'MERGE';
+}
+
 export interface ISyncConflictDocument extends Document {
   id: string;
+  version: number;
+  requestFingerprint?: string;
   mutationId: string;
   idempotencyKey: string;
   missionId: string;
@@ -32,6 +52,7 @@ export interface ISyncConflictDocument extends Document {
   resolvedAt?: Date | null;
   resolvedByUserId?: string | null;
   resolvedEntityState?: Record<string, unknown> | null;
+  resolutionMutation?: IConflictResolutionMutation | null;
   detectedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -39,6 +60,7 @@ export interface ISyncConflictDocument extends Document {
 
 const SyncConflictSchema = new Schema<ISyncConflictDocument>(
   {
+    requestFingerprint: { type: String },
     mutationId: {
       type: String,
       required: [true, 'mutationId is required'],
@@ -111,6 +133,12 @@ const SyncConflictSchema = new Schema<ISyncConflictDocument>(
       type: Schema.Types.Mixed,
       default: null,
     },
+    // Separate from the original mutation/snapshots, which remain the audit of
+    // the conflict. Persisted before applying the explicit resolution.
+    resolutionMutation: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
     detectedAt: {
       type: Date,
       default: () => new Date(),
@@ -145,6 +173,7 @@ SyncConflictSchema.index({ missionId: 1, actorId: 1, status: 1 });
 SyncConflictSchema.index({ missionId: 1, detectedAt: -1 });
 SyncConflictSchema.index({ idempotencyKey: 1 }, { unique: true });
 
+exposeVersion(SyncConflictSchema);
 export const SyncConflict = mongoose.model<ISyncConflictDocument>(
   'SyncConflict',
   SyncConflictSchema

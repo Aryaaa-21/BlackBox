@@ -1,7 +1,26 @@
 import mongoose from 'mongoose';
 import { config } from './env';
+import { AppError } from '../middleware/error.middleware';
 
 let isConnected = false;
+let memoryServer: import('mongodb-memory-server').MongoMemoryReplSet | undefined;
+let capabilityConnection: unknown;
+let supportsTransactions: boolean | undefined;
+
+export const assertTransactionsSupported = async (): Promise<void> => {
+  const db = mongoose.connection.db;
+  if (!db || mongoose.connection.readyState !== 1) {
+    throw new AppError('MongoDB is unavailable for atomic writes', 503, 'DATABASE_UNAVAILABLE');
+  }
+  if (capabilityConnection !== db || supportsTransactions === undefined) {
+    const hello = await db.admin().command({ hello: 1 });
+    capabilityConnection = db;
+    supportsTransactions = !!hello.setName || hello.msg === 'isdbgrid';
+  }
+  if (!supportsTransactions) {
+    throw new AppError('Atomic writes require a MongoDB replica set or mongos; the configured MongoDB server is standalone', 503, 'TRANSACTIONS_UNSUPPORTED');
+  }
+};
 
 export const connectDatabase = async (): Promise<void> => {
   if (isConnected) {
@@ -29,9 +48,9 @@ export const connectDatabase = async (): Promise<void> => {
       try {
         console.log('[Database] Starting in-memory MongoDB server fallback for development/testing...');
         // Dynamic import so production doesn't bundle memory server
-        const { MongoMemoryServer } = await import('mongodb-memory-server');
-        const mongod = await MongoMemoryServer.create();
-        const uri = mongod.getUri();
+        const { MongoMemoryReplSet } = await import('mongodb-memory-server');
+        memoryServer = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+        const uri = memoryServer.getUri();
         console.log(`[Database] In-memory MongoDB started at: ${uri}`);
         await mongoose.connect(uri);
         isConnected = true;
@@ -54,6 +73,10 @@ export const disconnectDatabase = async (): Promise<void> => {
 
   try {
     await mongoose.connection.close();
+    if (memoryServer) await memoryServer.stop();
+    memoryServer = undefined;
+    capabilityConnection = undefined;
+    supportsTransactions = undefined;
     isConnected = false;
     console.log('[Database] MongoDB connection gracefully terminated');
   } catch (error: unknown) {

@@ -8,12 +8,12 @@
  */
 
 import mongoose from 'mongoose';
-import { hashPassword, signToken } from '../utils/jwt';
+import { hashPassword } from '../utils/jwt';
 import { User, IUserDocument } from '../models/User';
 import { Mission, IMissionDocument } from '../models/Mission';
 import { MissionMember } from '../models/MissionMember';
 import { Task, ITaskDocument } from '../models/Task';
-import { MissionEvent } from '../models/MissionEvent';
+import { MissionEvent, deleteDemoMissionEvents } from '../models/MissionEvent';
 import { ProcessedMutation } from '../models/ProcessedMutation';
 import { SyncConflict } from '../models/SyncConflict';
 import { config } from '../config/env';
@@ -24,13 +24,13 @@ import {
   EventSource,
   UserPayload,
 } from '../types';
+import { missionEventService } from './missionEvent.service';
+import { inUnitOfWork, withUnitOfWork } from './unitOfWork';
 
 export interface DemoUserCredentials {
   name: string;
   email: string;
   role: 'COMMANDER' | 'FIELD_OPERATOR';
-  password: string;
-  token?: string;
   userId?: string;
 }
 
@@ -46,10 +46,10 @@ export interface DemoInitResponse {
   };
   tasksCount: number;
   eventsCount: number;
-  primaryToken: string; // Commander token for immediate one-click login
 }
 
 const DEMO_EMAIL_DOMAIN = '@demo.blackbox.internal';
+const DEMO_MISSION_TITLE = 'Campus Emergency Operations';
 
 export class DemoService {
   /**
@@ -57,6 +57,7 @@ export class DemoService {
    * "Campus Emergency Operations" with 4 users, 5 tasks, and full event history.
    */
   async resetDemo(): Promise<DemoInitResponse> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.resetDemo());
     if (!config.enableDemoMode) {
       throw new AppError(
         'Demo mode is disabled in this environment',
@@ -74,23 +75,20 @@ export class DemoService {
     const demoUserIds = existingDemoUsers.map((u) => u._id);
 
     const existingDemoMissions = await Mission.find({
-      $or: [
-        { title: 'Campus Emergency Operations' },
-        { createdBy: { $in: demoUserIds } },
-      ],
+      // A title is not an ownership boundary. Only missions owned by the
+      // dedicated demo accounts may be cleaned up here.
+      createdBy: { $in: demoUserIds },
     });
     const demoMissionIds = existingDemoMissions.map((m) => m._id);
 
     // 2. Clean up demo-specific records only (never touch real user records!)
     if (demoMissionIds.length > 0) {
-      await Promise.all([
-        Task.deleteMany({ missionId: { $in: demoMissionIds } }),
-        MissionMember.deleteMany({ missionId: { $in: demoMissionIds } }),
-        MissionEvent.deleteMany({ missionId: { $in: demoMissionIds } }),
-        ProcessedMutation.deleteMany({ missionId: { $in: demoMissionIds } }),
-        SyncConflict.deleteMany({ missionId: { $in: demoMissionIds } }),
-        Mission.deleteMany({ _id: { $in: demoMissionIds } }),
-      ]);
+      await deleteDemoMissionEvents(demoMissionIds);
+      await Task.deleteMany({ missionId: { $in: demoMissionIds } });
+      await MissionMember.deleteMany({ missionId: { $in: demoMissionIds } });
+      await ProcessedMutation.deleteMany({ missionId: { $in: demoMissionIds } });
+      await SyncConflict.deleteMany({ missionId: { $in: demoMissionIds } });
+      await Mission.deleteMany({ _id: { $in: demoMissionIds } });
     }
 
     if (demoUserIds.length > 0) {
@@ -98,7 +96,10 @@ export class DemoService {
     }
 
     // 3. Create fresh demo users with known credentials
-    const defaultPassword = 'Password123!';
+    const defaultPassword = process.env.DEMO_PASSWORD?.trim();
+    if (!defaultPassword) {
+      throw new AppError('DEMO_PASSWORD must be configured before resetting demo data', 500, 'DEMO_PASSWORD_NOT_CONFIGURED');
+    }
     const passwordHash = await hashPassword(defaultPassword);
 
     const demoUsersToCreate = [
@@ -137,7 +138,7 @@ export class DemoService {
     // 4. Create the standard demo mission: "Campus Emergency Operations"
     const startedAt = new Date(Date.now() - 35 * 60 * 1000); // 35 minutes ago
     const demoMission = await Mission.create({
-      title: 'Campus Emergency Operations',
+      title: DEMO_MISSION_TITLE,
       description:
         'Coordinated tactical field operation for simulated emergency response, perimeter security, electrical subsystem verification, and safety status reporting.',
       location: 'Narula Institute Campus',
@@ -148,7 +149,7 @@ export class DemoService {
     });
 
     // 5. Deploy team members to mission
-    await MissionMember.insertMany([
+    const memberships = await MissionMember.insertMany([
       {
         missionId: demoMission._id,
         userId: commander._id,
@@ -385,36 +386,45 @@ export class DemoService {
       },
     ];
 
-    await MissionEvent.insertMany(historicalEvents);
+    const tasks = [taskMainGate, taskElectrical, taskMedical, taskAssembly, taskReport];
+    const seededEvents = historicalEvents.map((event) => {
+      let payload: Record<string, unknown> = { ...event.payload };
+      if (event.eventType === MissionEventType.MISSION_CREATED) {
+        payload = { ...payload, missionId: demoMission.id, description: demoMission.description,
+          location: demoMission.location, status: 'DRAFT', createdBy: commander.id,
+          commanderMembershipId: memberships[0].id, version: demoMission.version };
+      }
+      const task = tasks.find((candidate) => candidate._id.equals(event.targetId));
+      if (task && event.eventType === MissionEventType.TASK_CREATED) {
+        payload = { ...payload, taskId: task.id, description: task.description, status: 'PENDING',
+          assignedTo: task === taskMedical ? opRahul.id : null, createdBy: commander.id, version: task.version };
+      }
+      if (task && event.eventType === MissionEventType.TASK_ASSIGNED) {
+        payload = { ...payload, taskId: task.id, assignedTo: task.assignedTo?.toString(), version: task.version };
+      }
+      if (task && event.eventType === MissionEventType.TASK_STARTED) {
+        payload = { ...payload, taskId: task.id, version: task.version };
+      }
+      const member = memberships.find((candidate) => candidate.userId.toString() === event.targetId?.toString());
+      return { ...event,
+        ...(member ? { targetId: member._id } : {}),
+        payload: member ? { ...payload, memberId: member.id, userId: member.userId.toString(),
+          status: member.status, joinedAt: member.joinedAt, version: member.version } : payload };
+    });
+    await MissionEvent.insertMany(seededEvents);
 
-    // 8. Generate JWT tokens for instant demo login
-    const generateToken = (user: IUserDocument): string => {
-      const payload: UserPayload = {
-        id: user._id.toString(),
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        isActive: true,
-      };
-      return signToken(payload);
-    };
-
-    const demoUsersWithTokens: DemoUserCredentials[] = createdUsers.map((u) => ({
+    const demoUsers: DemoUserCredentials[] = createdUsers.map((u) => ({
       name: u.name,
       email: u.email,
       role: u.role,
-      password: defaultPassword,
-      token: generateToken(u),
       userId: u._id.toString(),
     }));
-
-    const commanderToken = demoUsersWithTokens.find((u) => u.role === 'COMMANDER')!.token!;
 
     console.log('[DemoService] Demo environment initialized successfully.');
 
     return {
       message: 'Demo environment reset successfully.',
-      demoUsers: demoUsersWithTokens,
+      demoUsers,
       demoMission: {
         id: demoMission._id.toString(),
         title: demoMission.title,
@@ -424,7 +434,6 @@ export class DemoService {
       },
       tasksCount: 5,
       eventsCount: historicalEvents.length,
-      primaryToken: commanderToken,
     };
   }
 
@@ -433,19 +442,32 @@ export class DemoService {
    * the client is simulating offline, to demonstrate conflict resolution.
    */
   async triggerSimulatedConflict(missionId?: string): Promise<{ taskId: string; title: string; newServerStatus: string }> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.triggerSimulatedConflict(missionId));
     if (!config.enableDemoMode) {
       throw new AppError('Demo mode is disabled in this environment', 403, 'DEMO_MODE_DISABLED');
     }
 
-    // Find the demo mission
-    let targetMissionId = missionId;
-    if (!targetMissionId) {
-      const demoMission = await Mission.findOne({ title: 'Campus Emergency Operations' });
-      if (!demoMission) {
-        throw new AppError('Demo mission not found. Reset demo first.', 404, 'DEMO_MISSION_NOT_FOUND');
-      }
-      targetMissionId = demoMission._id.toString();
+    // Find only the standard mission owned by a demo account. A caller must
+    // never be able to point this endpoint at an arbitrary real mission.
+    if (missionId && !mongoose.Types.ObjectId.isValid(missionId)) {
+      throw new AppError('Invalid demo mission ID', 400, 'INVALID_MISSION_ID');
     }
+
+    const demoUserIds = (
+      await User.find({
+        email: { $regex: `${DEMO_EMAIL_DOMAIN}$`, $options: 'i' },
+      }).select('_id')
+    ).map((user) => user._id);
+
+    const demoMission = await Mission.findOne({
+      ...(missionId ? { _id: new mongoose.Types.ObjectId(missionId) } : {}),
+      title: DEMO_MISSION_TITLE,
+      createdBy: { $in: demoUserIds },
+    });
+    if (!demoMission) {
+      throw new AppError('Demo mission not found. Reset demo first.', 404, 'DEMO_MISSION_NOT_FOUND');
+    }
+    const targetMissionId = demoMission._id.toString();
 
     // Find a task in this mission to conflict on (e.g. Inspect Main Gate or Check Electrical Room)
     const task = await Task.findOne({
@@ -464,21 +486,23 @@ export class DemoService {
     task.updatedAt = new Date();
     await task.save();
 
-    // Log the event
-    await MissionEvent.create({
-      missionId: task.missionId,
-      actorId: task.createdBy,
+    // Log the event through the immutable event service so the normal replay
+    // and socket delivery guarantees also apply to the demo divergence.
+    await missionEventService.createMissionEvent({
+      missionId: task.missionId.toString(),
+      actorId: task.createdBy.toString(),
       eventType: MissionEventType.TASK_BLOCKED,
       targetType: EventTargetType.TASK,
-      targetId: task._id,
+      targetId: task._id.toString(),
       payload: {
+        taskId: task._id.toString(),
         taskTitle: task.title,
         status: 'BLOCKED',
         reason: 'Simulated server divergence: Emergency security lockout initiated remotely',
         previousStatus,
+        version: task.version,
       },
       source: EventSource.SYSTEM,
-      createdAt: new Date(),
     });
 
     console.log(`[DemoService] Triggered simulated server change on Task ${task.title} (status=BLOCKED)`);
@@ -502,7 +526,13 @@ export class DemoService {
       return { enabled: false, demoUsers: [] };
     }
 
-    const demoMission = await Mission.findOne({ title: 'Campus Emergency Operations' }).select('_id');
+    const demoUsers = await User.find({
+      email: { $regex: `${DEMO_EMAIL_DOMAIN}$`, $options: 'i' },
+    }).select('_id');
+    const demoMission = await Mission.findOne({
+      title: DEMO_MISSION_TITLE,
+      createdBy: { $in: demoUsers.map((user) => user._id) },
+    }).select('_id');
 
     return {
       enabled: true,

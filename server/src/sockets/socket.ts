@@ -4,13 +4,18 @@ import { config } from '../config/env';
 import { verifyToken } from '../utils/jwt';
 import { AUTH_COOKIE_NAME } from '../utils/cookies';
 import { UserPayload } from '../types';
+import { afterCommit } from '../services/unitOfWork';
 
 let io: SocketIOServer | null = null;
 
 export const initializeSockets = (httpServer: HttpServer): SocketIOServer => {
+  const allowedOrigins = config.isProduction
+    ? [config.clientUrl]
+    : [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'];
+
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -147,16 +152,14 @@ export const getIO = (): SocketIOServer => {
  * Emit an operational event directly to a specific user's private room
  */
 export const emitToUser = (userId: string, event: string, data: unknown): void => {
-  if (io) {
-    io.to(`user:${userId}`).emit(event, data);
-  }
+  const snapshot: unknown = JSON.parse(JSON.stringify(data));
+  afterCommit(() => { if (io) io.to(`user:${userId}`).emit(event, snapshot); });
 };
 
 /**
  * Emit a real-time event to an operational mission room
  */
 export const emitToMission = (missionId: string, event: string, data: unknown): void => {
-  if (io) {
-    io.to(`mission:${missionId}`).emit(event, data);
-  }
+  const snapshot: unknown = JSON.parse(JSON.stringify(data));
+  afterCommit(() => { if (io) io.to(`mission:${missionId}`).emit(event, snapshot); });
 };

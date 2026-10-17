@@ -33,6 +33,7 @@ export const MutationSchema = z.object({
   createdAt: z.string().datetime({ message: 'createdAt must be ISO 8601' }),
   idempotencyKey: z.string().min(1, 'idempotencyKey is required'),
   baseUpdatedAt: z.string().datetime({ message: 'baseUpdatedAt must be ISO 8601' }).optional(),
+  baseVersion: z.number().int().nonnegative().safe().optional(),
 });
 
 export const SyncBatchSchema = z.object({
@@ -49,6 +50,8 @@ export const ConflictResolutionSchema = z.object({
     errorMap: () => ({ message: 'resolution must be KEEP_LOCAL, KEEP_SERVER, or MERGE' }),
   }),
   mergedState: z.record(z.unknown()).optional(),
+  expectedServerUpdatedAt: z.string().datetime().optional(),
+  expectedServerVersion: z.number().int().nonnegative().safe().optional(),
 });
 
 export type ConflictResolutionInput = z.infer<typeof ConflictResolutionSchema>;

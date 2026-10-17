@@ -1,8 +1,10 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { TaskStatus, TaskPriority } from '../types';
+import { exposeVersion } from './versioning';
 
 export interface ITaskDocument extends Document {
   id: string;
+  version: number;
   missionId: mongoose.Types.ObjectId;
   title: string;
   description: string;
@@ -104,4 +106,5 @@ TaskSchema.index({ missionId: 1, status: 1 });
 TaskSchema.index({ missionId: 1, priority: 1 });
 TaskSchema.index({ assignedTo: 1, status: 1 });
 
+exposeVersion(TaskSchema);
 export const Task = mongoose.model<ITaskDocument>('Task', TaskSchema);

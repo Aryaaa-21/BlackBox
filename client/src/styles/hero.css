@@ -1,0 +1,622 @@
+/* ==========================================================================
+   BLACKBOX NEXT-GEN HERO SECTION STYLES
+   Futuristic, tactical, high-aesthetic operational HUD
+   ========================================================================== */
+
+.hero-v2 {
+  position: relative;
+  overflow: hidden;
+  padding: 80px 0 100px;
+  min-height: calc(100vh - 80px);
+  display: flex;
+  align-items: center;
+}
+
+/* Ambient Cybernetic Lighting & Grid */
+.hero-v2__ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.hero-v2__glow-cyan {
+  position: absolute;
+  top: -10%;
+  left: 15%;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(98, 217, 223, 0.12) 0%, rgba(47, 107, 255, 0.05) 50%, transparent 70%);
+  filter: blur(80px);
+}
+
+.hero-v2__glow-blue {
+  position: absolute;
+  top: 25%;
+  right: -5%;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(47, 107, 255, 0.16) 0%, rgba(20, 60, 120, 0.08) 50%, transparent 70%);
+  filter: blur(90px);
+}
+
+.hero-v2__grid-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.25;
+  background-image: 
+    linear-gradient(rgba(98, 217, 223, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(98, 217, 223, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 40%, black 20%, transparent 85%);
+}
+
+.hero-v2__container {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(460px, 1fr);
+  gap: 64px;
+  align-items: center;
+  width: min(1320px, calc(100% - 64px));
+  margin: 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+   LEFT COLUMN: HEADLINE, COPY & ACTIONS
+   -------------------------------------------------------------------------- */
+.hero-v2__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Eyebrow Status Badge */
+.hero-v2__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  padding: 6px 14px 6px 10px;
+  border-radius: 9999px;
+  background: rgba(13, 27, 42, 0.85);
+  border: 1px solid rgba(98, 217, 223, 0.28);
+  box-shadow: 0 0 20px rgba(98, 217, 223, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+}
+
+.hero-v2__badge-radar {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.hero-v2__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #62d9df;
+  box-shadow: 0 0 10px #62d9df;
+}
+
+.hero-v2__badge-ping {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid #62d9df;
+  animation: hero-radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes hero-radar-ping {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.hero-v2__badge-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #62d9df;
+  text-transform: uppercase;
+}
+
+.hero-v2__badge-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(98, 217, 223, 0.25);
+}
+
+.hero-v2__badge-sub {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: #8ea4ba;
+  letter-spacing: 0.08em;
+}
+
+/* Hero Typography */
+.hero-v2__title {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(40px, 4.6vw, 68px);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
+.hero-v2__title-accent {
+  background: linear-gradient(135deg, #62d9df 0%, #2f6bff 60%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.hero-v2__lede {
+  margin: 0;
+  max-width: 580px;
+  color: #a8b8c8;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.hero-v2__lede strong {
+  color: #eaf3f8;
+  font-weight: 500;
+}
+
+/* Call-to-actions */
+.hero-v2__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.hero-v2__btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 26px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2f6bff 0%, #1e4fd9 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(47, 107, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+}
+
+.hero-v2__btn-primary:hover {
+  background: linear-gradient(135deg, #3d78ff 0%, #265bee 100%);
+  box-shadow: 0 6px 28px rgba(47, 107, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+  color: #ffffff;
+}
+
+.hero-v2__btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #8ea4ba;
+  background: rgba(13, 27, 42, 0.7);
+  border: 1px solid rgba(142, 164, 186, 0.22);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.hero-v2__btn-secondary:hover {
+  color: #f4fbfb;
+  border-color: rgba(98, 217, 223, 0.45);
+  background: rgba(18, 38, 58, 0.85);
+  transform: translateY(-1px);
+}
+
+/* Feature Pillars */
+.hero-v2__pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(142, 164, 186, 0.14);
+}
+
+.hero-v2__pillar {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.hero-v2__pillar-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(98, 217, 223, 0.08);
+  border: 1px solid rgba(98, 217, 223, 0.22);
+  color: #62d9df;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.hero-v2__pillar-text strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eaf3f8;
+  letter-spacing: -0.01em;
+}
+
+.hero-v2__pillar-text span {
+  display: block;
+  font-size: 11px;
+  color: #8ea4ba;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+/* --------------------------------------------------------------------------
+   RIGHT COLUMN: TACTICAL TELEMETRY HUD
+   -------------------------------------------------------------------------- */
+.hero-v2__hud {
+  position: relative;
+  background: linear-gradient(160deg, rgba(14, 32, 52, 0.85) 0%, rgba(7, 19, 33, 0.95) 100%);
+  border: 1px solid rgba(98, 217, 223, 0.25);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 45px rgba(47, 107, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+/* Tactical Reticles / Corner Brackets */
+.hero-v2__hud::before,
+.hero-v2__hud::after {
+  content: '+';
+  position: absolute;
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  color: rgba(98, 217, 223, 0.5);
+  pointer-events: none;
+}
+
+.hero-v2__hud::before { top: 8px; left: 10px; }
+.hero-v2__hud::after { bottom: 8px; right: 10px; }
+
+/* HUD Header */
+.hero-v2__hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(142, 164, 186, 0.14);
+}
+
+.hero-v2__hud-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-v2__hud-title-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #eaf3f8;
+  text-transform: uppercase;
+}
+
+.hero-v2__hud-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.hero-v2__hud-status-chip--online {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+.hero-v2__hud-status-chip--degraded {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.hero-v2__hud-status-chip--offline {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+/* Interactive Network Mode Switcher */
+.hero-v2__hud-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 16px 0;
+  padding: 4px;
+  background: rgba(6, 17, 28, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(142, 164, 186, 0.1);
+}
+
+.hero-v2__hud-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: #8ea4ba;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-v2__hud-mode-btn:hover {
+  color: #eaf3f8;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.hero-v2__hud-mode-btn--active {
+  background: rgba(18, 42, 68, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(98, 217, 223, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Signal Waveform Canvas */
+.hero-v2__waveform-container {
+  position: relative;
+  height: 90px;
+  background: rgba(5, 14, 24, 0.75);
+  border: 1px solid rgba(98, 217, 223, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.hero-v2__waveform-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hero-v2__waveform-overlay {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.hero-v2__waveform-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  color: #8ea4ba;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hero-v2__waveform-metric {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: #62d9df;
+}
+
+/* Telemetry Metrics Grid */
+.hero-v2__telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.hero-v2__telemetry-card {
+  padding: 10px 12px;
+  background: rgba(8, 20, 34, 0.55);
+  border: 1px solid rgba(142, 164, 186, 0.12);
+  border-radius: 6px;
+}
+
+.hero-v2__telemetry-card small {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  color: #7a8e9e;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-v2__telemetry-card strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  font-weight: 600;
+  color: #eaf3f8;
+}
+
+/* Live Operational Stream / Queue Simulation */
+.hero-v2__stream {
+  padding: 12px 14px;
+  background: rgba(5, 14, 24, 0.85);
+  border: 1px solid rgba(98, 217, 223, 0.18);
+  border-radius: 8px;
+}
+
+.hero-v2__stream-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.hero-v2__stream-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #8ea4ba;
+  text-transform: uppercase;
+}
+
+.hero-v2__stream-action {
+  background: rgba(98, 217, 223, 0.1);
+  border: 1px solid rgba(98, 217, 223, 0.28);
+  color: #62d9df;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-v2__stream-action:hover {
+  background: rgba(98, 217, 223, 0.2);
+  border-color: #62d9df;
+  color: #ffffff;
+}
+
+.hero-v2__stream-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 105px;
+  overflow: hidden;
+}
+
+.hero-v2__stream-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(14, 30, 48, 0.45);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  animation: hero-fade-in 0.3s ease;
+}
+
+@keyframes hero-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-v2__stream-item-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #eaf3f8;
+}
+
+.hero-v2__stream-item-badge {
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+.hero-v2__stream-item-badge--sync {
+  background: rgba(47, 107, 255, 0.25);
+  color: #93c5fd;
+}
+
+.hero-v2__stream-item-badge--queue {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fcd34d;
+}
+
+.hero-v2__stream-item-badge--store {
+  background: rgba(98, 217, 223, 0.25);
+  color: #62d9df;
+}
+
+.hero-v2__stream-item-time {
+  color: #6a7e90;
+  font-size: 9px;
+}
+
+/* --------------------------------------------------------------------------
+   RESPONSIVE QUERIES
+   -------------------------------------------------------------------------- */
+@media (max-width: 1080px) {
+  .hero-v2__container {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .hero-v2__hud {
+    max-width: 620px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-v2 {
+    padding: 40px 0 60px;
+  }
+  .hero-v2__container {
+    width: calc(100% - 32px);
+  }
+  .hero-v2__title {
+    font-size: 34px;
+  }
+  .hero-v2__pillars {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .hero-v2__telemetry-grid {
+    grid-template-columns: 1fr;
+  }
+  .hero-v2__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero-v2__btn-primary,
+  .hero-v2__btn-secondary {
+    justify-content: center;
+  }
+}

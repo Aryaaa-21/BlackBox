@@ -12,10 +12,13 @@ import {
 } from '../validators/task.validator';
 import { getIO } from '../sockets/socket';
 import { missionEventService } from './missionEvent.service';
+import { afterCommit, inUnitOfWork, withUnitOfWork } from './unitOfWork';
 
-interface TaskEventMetadata {
+export interface TaskEventMetadata {
   idempotencyKey?: string;
   clientCreatedAt?: string;
+  deviceId?: string;
+  mutationId?: string;
 }
 
 export class TaskService {
@@ -32,14 +35,17 @@ export class TaskService {
    * Helper to emit socket events safely
    */
   private emitSocketEvent(room: string, event: string, payload: unknown): void {
-    try {
-      const io = getIO();
-      if (io) {
-        io.to(room).emit(event, payload);
+    const snapshot: unknown = JSON.parse(JSON.stringify(payload));
+    afterCommit(() => {
+      try {
+        const io = getIO();
+        if (io) {
+          io.to(room).emit(event, snapshot);
+        }
+      } catch {
+        // Ignored if socket not initialized in test runners
       }
-    } catch {
-      // Ignored if socket not initialized in test runners
-    }
+    });
   }
 
   /**
@@ -103,8 +109,10 @@ export class TaskService {
   async createTask(
     missionId: string,
     commanderId: string,
-    input: CreateTaskInput
+    input: CreateTaskInput,
+    eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.createTask(missionId, commanderId, input, eventMetadata));
     this.validateObjectId(missionId, 'Mission ID');
 
     // 1. Verify mission exists
@@ -151,7 +159,7 @@ export class TaskService {
 
     await task.save();
     await task.populate([
-      { path: 'assignedTo', select: 'id name email role' },
+      { path: 'assignedTo', select: 'id name email role', ordered: true },
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
@@ -167,8 +175,24 @@ export class TaskService {
         title: task.title,
         priority: task.priority,
         status: task.status,
+        description: task.description,
+        assignedTo: input.assignedTo || null,
+        assigneeName: (task.assignedTo as { name?: string } | null)?.name || null,
+        createdBy: commanderId,
+        version: task.version,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        startedAt: task.startedAt ?? null,
+        blockedAt: task.blockedAt ?? null,
+        completedAt: task.completedAt ?? null,
       },
       source: EventSource.USER,
+      clientCreatedAt: eventMetadata?.clientCreatedAt
+        ? new Date(eventMetadata.clientCreatedAt)
+        : undefined,
+      idempotencyKey: eventMetadata?.idempotencyKey,
+      deviceId: eventMetadata?.deviceId,
+      mutationId: eventMetadata?.mutationId,
     });
 
     // 6. Broadcast event (Section 61)
@@ -341,6 +365,7 @@ export class TaskService {
     input: UpdateTaskInput,
     eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.updateTask(taskId, commanderId, input, eventMetadata));
     this.validateObjectId(taskId, 'Task ID');
 
     const task = await Task.findById(taskId);
@@ -371,7 +396,7 @@ export class TaskService {
 
     await task.save();
     await task.populate([
-      { path: 'assignedTo', select: 'id name email role' },
+      { path: 'assignedTo', select: 'id name email role', ordered: true },
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
@@ -386,12 +411,18 @@ export class TaskService {
         taskId: task._id.toString(),
         title: task.title,
         priority: task.priority,
+        description: task.description,
+        version: task.version,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
       },
       source: EventSource.USER,
       clientCreatedAt: eventMetadata?.clientCreatedAt
         ? new Date(eventMetadata.clientCreatedAt)
         : undefined,
       idempotencyKey: eventMetadata?.idempotencyKey,
+      deviceId: eventMetadata?.deviceId,
+      mutationId: eventMetadata?.mutationId,
     });
 
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:updated', {
@@ -408,8 +439,10 @@ export class TaskService {
   async assignTask(
     taskId: string,
     commanderId: string,
-    targetUserId: string
+    targetUserId: string,
+    eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.assignTask(taskId, commanderId, targetUserId, eventMetadata));
     this.validateObjectId(taskId, 'Task ID');
     this.validateObjectId(targetUserId, 'Assignee ID');
 
@@ -441,7 +474,7 @@ export class TaskService {
     task.assignedTo = new mongoose.Types.ObjectId(targetUserId);
     await task.save();
     await task.populate([
-      { path: 'assignedTo', select: 'id name email role' },
+      { path: 'assignedTo', select: 'id name email role', ordered: true },
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
@@ -458,8 +491,17 @@ export class TaskService {
         title: task.title,
         assignedTo: targetUserId,
         assigneeName,
+        version: task.version,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
       },
       source: EventSource.USER,
+      clientCreatedAt: eventMetadata?.clientCreatedAt
+        ? new Date(eventMetadata.clientCreatedAt)
+        : undefined,
+      idempotencyKey: eventMetadata?.idempotencyKey,
+      deviceId: eventMetadata?.deviceId,
+      mutationId: eventMetadata?.mutationId,
     });
 
     // Real-time broadcast (Section 61)
@@ -483,6 +525,7 @@ export class TaskService {
     commanderId: string,
     eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.unassignTask(taskId, commanderId, eventMetadata));
     this.validateObjectId(taskId, 'Task ID');
 
     const task = await Task.findById(taskId);
@@ -506,7 +549,7 @@ export class TaskService {
     task.assignedTo = null;
     await task.save();
     await task.populate([
-      { path: 'assignedTo', select: 'id name email role' },
+      { path: 'assignedTo', select: 'id name email role', ordered: true },
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
@@ -520,12 +563,18 @@ export class TaskService {
       payload: {
         taskId: task._id.toString(),
         title: task.title,
+        assignedTo: null,
+        version: task.version,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
       },
       source: EventSource.USER,
       clientCreatedAt: eventMetadata?.clientCreatedAt
         ? new Date(eventMetadata.clientCreatedAt)
         : undefined,
       idempotencyKey: eventMetadata?.idempotencyKey,
+      deviceId: eventMetadata?.deviceId,
+      mutationId: eventMetadata?.mutationId,
     });
 
     this.emitSocketEvent(`mission:${task.missionId}`, 'task:unassigned', {
@@ -542,8 +591,10 @@ export class TaskService {
   async updateTaskStatus(
     taskId: string,
     user: UserPayload,
-    newStatus: TaskStatus
+    newStatus: TaskStatus,
+    eventMetadata?: TaskEventMetadata
   ): Promise<ITaskDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.updateTaskStatus(taskId, user, newStatus, eventMetadata));
     this.validateObjectId(taskId, 'Task ID');
 
     const task = await Task.findById(taskId);
@@ -658,7 +709,7 @@ export class TaskService {
 
     await task.save();
     await task.populate([
-      { path: 'assignedTo', select: 'id name email role' },
+      { path: 'assignedTo', select: 'id name email role', ordered: true },
       { path: 'createdBy', select: 'id name email role' },
     ]);
 
@@ -680,8 +731,20 @@ export class TaskService {
         taskId: task._id.toString(),
         title: task.title,
         status: newStatus,
+        version: task.version,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        startedAt: task.startedAt ?? null,
+        blockedAt: task.blockedAt ?? null,
+        completedAt: task.completedAt ?? null,
       },
       source: EventSource.USER,
+      clientCreatedAt: eventMetadata?.clientCreatedAt
+        ? new Date(eventMetadata.clientCreatedAt)
+        : undefined,
+      idempotencyKey: eventMetadata?.idempotencyKey,
+      deviceId: eventMetadata?.deviceId,
+      mutationId: eventMetadata?.mutationId,
     });
 
     // Broadcast status change (Section 61)

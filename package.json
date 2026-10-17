@@ -4,13 +4,19 @@
   "private": true,
   "description": "BlackBox — Resilient Operations Platform API (Backend)",
   "workspaces": [
-    "server"
+    "server",
+    "client"
   ],
   "scripts": {
-    "dev": "npm run dev --prefix server",
+    "dev": "concurrently -k -n server,client -c cyan,magenta \"npm run server\" \"npm run client\"",
+    "dev:server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client",
+    "dev:client": "npm run dev --prefix client",
     "server": "npm run dev --prefix server",
     "start": "npm run start --prefix server",
     "build": "npm run build --prefix server",
+    "build:client": "npm run build --prefix client",
+    "typecheck:client": "npm run typecheck --prefix client",
     "build:server": "npm run build --prefix server",
     "lint": "npm run lint --prefix server",
     "test": "npm test --prefix server"

@@ -6,6 +6,7 @@ import { AppError } from '../middleware/error.middleware';
 import { UserPayload, MissionEventType, EventTargetType, EventSource } from '../types';
 import { getIO } from '../sockets/socket';
 import { missionEventService } from './missionEvent.service';
+import { afterCommit, inUnitOfWork, withUnitOfWork } from './unitOfWork';
 
 export class MissionMemberService {
   /**
@@ -21,14 +22,17 @@ export class MissionMemberService {
    * Safe socket event emission helper
    */
   private emitSocketEvent(room: string, event: string, payload: unknown): void {
-    try {
-      const io = getIO();
-      if (io) {
-        io.to(room).emit(event, payload);
+    const snapshot: unknown = JSON.parse(JSON.stringify(payload));
+    afterCommit(() => {
+      try {
+        const io = getIO();
+        if (io) {
+          io.to(room).emit(event, snapshot);
+        }
+      } catch {
+        // Ignored if socket not initialized in test runners
       }
-    } catch {
-      // Ignored if socket not initialized in test runners
-    }
+    });
   }
 
   /**
@@ -74,6 +78,7 @@ export class MissionMemberService {
     commanderId: string,
     targetUserId: string
   ): Promise<IMissionMemberDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.addMember(missionId, commanderId, targetUserId));
     this.validateObjectId(missionId, 'Mission ID');
     this.validateObjectId(targetUserId, 'User ID');
 
@@ -146,6 +151,12 @@ export class MissionMemberService {
           userId: targetUserId,
           userName: reactivatedUserName,
           role: membership.role,
+          memberId: membership._id.toString(),
+          status: membership.status,
+          joinedAt: membership.joinedAt,
+          version: membership.version,
+          createdAt: membership.createdAt,
+          updatedAt: membership.updatedAt,
         },
         source: EventSource.USER,
       });
@@ -187,6 +198,12 @@ export class MissionMemberService {
         userId: targetUserId,
         userName: addedUserName,
         role: membership.role,
+        memberId: membership._id.toString(),
+        status: membership.status,
+        joinedAt: membership.joinedAt,
+        version: membership.version,
+        createdAt: membership.createdAt,
+        updatedAt: membership.updatedAt,
       },
       source: EventSource.USER,
     });
@@ -212,6 +229,7 @@ export class MissionMemberService {
     commanderId: string,
     targetUserId: string
   ): Promise<IMissionMemberDocument> {
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.removeMember(missionId, commanderId, targetUserId));
     this.validateObjectId(missionId, 'Mission ID');
     this.validateObjectId(targetUserId, 'User ID');
 
@@ -262,6 +280,12 @@ export class MissionMemberService {
         userId: targetUserId,
         userName: removedUserName,
         role: membership.role,
+        memberId: membership._id.toString(),
+        status: membership.status,
+        version: membership.version,
+        joinedAt: membership.joinedAt,
+        createdAt: membership.createdAt,
+        updatedAt: membership.updatedAt,
       },
       source: EventSource.USER,
     });

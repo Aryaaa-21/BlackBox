@@ -2,14 +2,17 @@
  * Phase 7 — Synchronization Engine
  * Idempotency Service
  *
- * Prevents duplicate mutations from being executed twice.
+ * Replays successful mutation receipts without executing again.
  * A mutation's idempotencyKey is generated client-side and NEVER
  * regenerated on retry — so the same key arriving twice returns
- * the original result without re-executing the operation.
+ * the original result without re-executing the operation, while the receipt
+ * is retained. Operational callers persist entity/event/receipt in one unit of work.
  */
 
 import { ProcessedMutation, IProcessedMutationDocument } from '../models/ProcessedMutation';
+import { AppError } from '../middleware/error.middleware';
 import crypto from 'crypto';
+import { inUnitOfWork, withUnitOfWork } from './unitOfWork';
 
 interface StoreIdempotencyParams {
   idempotencyKey: string;
@@ -22,7 +25,8 @@ interface StoreIdempotencyParams {
   localId?: string;
   serverId?: string;
   result: Record<string, unknown>;
-  fingerprint?: string;
+  fingerprint: string;
+  outcome?: 'SYNCED' | 'CONFLICT';
 }
 
 export interface IdempotencyIdentity {
@@ -33,18 +37,40 @@ export interface IdempotencyIdentity {
   entityType: string;
   entityId: string;
   payload: Record<string, unknown>;
+  baseUpdatedAt?: string;
+  baseVersion?: number;
+  clientCreatedAt?: string;
 }
 
+/** JSON object order is irrelevant at every depth; array order remains significant. */
+export const deterministicFingerprint = (value: unknown): string =>
+  crypto.createHash('sha256').update(JSON.stringify(value, (_key, entry: unknown) => {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const object = entry as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(object).sort().map((key) => [key, object[key]]));
+    }
+    return entry;
+  })).digest('hex');
+
 export const mutationFingerprint = (identity: IdempotencyIdentity): string =>
-  crypto.createHash('sha256').update(JSON.stringify({
+  deterministicFingerprint({
     userId: identity.userId,
     deviceId: identity.deviceId,
     missionId: identity.missionId,
     operationType: identity.operationType,
     entityType: identity.entityType,
     entityId: identity.entityId,
-    payload: Object.fromEntries(Object.entries(identity.payload).sort(([a], [b]) => a.localeCompare(b))),
-  })).digest('hex');
+    payload: identity.payload,
+    baseUpdatedAt: identity.baseUpdatedAt ?? null,
+    clientCreatedAt: identity.clientCreatedAt ?? null,
+    ...(identity.baseVersion !== undefined ? { baseVersion: identity.baseVersion } : {}),
+  });
+
+const keyReused = (): AppError => new AppError(
+  'Idempotency key was already used for a different mutation',
+  409,
+  'IDEMPOTENCY_KEY_REUSED'
+);
 
 export class IdempotencyService {
   /**
@@ -62,9 +88,18 @@ export class IdempotencyService {
         existing.missionId === identity.missionId &&
         existing.operationType === identity.operationType &&
         existing.entityType === identity.entityType &&
-        existing.entityId === identity.entityId;
+        (existing.entityId === identity.entityId ||
+          // Old records stored the resolved server ID. Their original local ID
+          // is the only recoverable request identity; never invent/backfill a
+          // payload fingerprint for records whose original payload is unknown.
+          (!existing.fingerprint && existing.localId === identity.entityId));
       if (!sameIdentity || (existing.fingerprint && existing.fingerprint !== mutationFingerprint(identity))) {
-        throw new Error('IDEMPOTENCY_KEY_REUSED');
+        throw keyReused();
+      }
+      if (!existing.fingerprint) {
+        // Never invent the original payload or silently bless a potentially
+        // colliding legacy retry. Keep it for explicit reconciliation instead.
+        throw new AppError('Legacy receipt has no verifiable payload fingerprint; reconcile server state before retrying', 409, 'IDEMPOTENCY_LEGACY_UNVERIFIABLE');
       }
     }
     return existing;
@@ -75,31 +110,37 @@ export class IdempotencyService {
    * Called AFTER the mutation has been applied to the database.
    */
   async storeResult(params: StoreIdempotencyParams): Promise<void> {
-    // Use upsert to handle race conditions gracefully
-    await ProcessedMutation.findOneAndUpdate(
-      { idempotencyKey: params.idempotencyKey },
-      {
-        $setOnInsert: {
-          idempotencyKey: params.idempotencyKey,
-          userId: params.userId,
-          deviceId: params.deviceId,
-          missionId: params.missionId,
-          operationType: params.operationType,
-          entityType: params.entityType,
-          entityId: params.entityId,
-          localId: params.localId,
-          serverId: params.serverId,
-           result: params.result,
-           fingerprint: params.fingerprint,
-        },
-      },
-      { upsert: true, new: true }
-    );
+    if (!inUnitOfWork()) return withUnitOfWork(() => this.storeResult(params));
+    // Insert-only: accepting an existing receipt here could commit entity work
+    // performed by a losing producer. Let the root abort and re-read instead.
+    await new ProcessedMutation(params).save();
+  }
+
+  /** Resolve an offline CREATE from an earlier batch, within its original scope. */
+  async resolveLocalId(scope: {
+    userId: string;
+    deviceId: string;
+    missionId: string;
+    entityType: string;
+    localId: string;
+  }): Promise<string | null> {
+    if (scope.entityType !== 'TASK') return null;
+    const created = await ProcessedMutation.findOne({
+      userId: scope.userId,
+      deviceId: scope.deviceId,
+      missionId: scope.missionId,
+      entityType: scope.entityType,
+      operationType: 'CREATE_TASK',
+      $or: [{ localId: scope.localId }, { entityId: scope.localId }],
+      serverId: { $type: 'string' },
+    }).lean<IProcessedMutationDocument>();
+    return created?.serverId || null;
   }
 
   /**
    * Purge old idempotency records to keep the collection bounded.
-   * Safe to call periodically. Retains 30 days of history.
+   * Retains 30 days by default. Purging also expires the corresponding retry
+   * receipts and local-ID mappings; it is not indefinite exactly-once storage.
    */
   async purgeOldRecords(olderThanDays = 30): Promise<number> {
     const cutoff = new Date();

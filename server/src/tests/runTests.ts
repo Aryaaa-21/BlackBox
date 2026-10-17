@@ -13,9 +13,11 @@ import mongoose from 'mongoose';
 import { missionEventService } from '../services/missionEvent.service';
 import { MissionEventType, EventTargetType, EventSource } from '../types';
 import { randomUUID } from 'crypto';
+import { runPhase2Tests } from './phase2Tests';
+import { runPhase3Tests } from './phase3Tests';
 
 async function runTests() {
-  console.log('\n--- STARTING BLACKBOX PHASE 2 TEST SUITE ---\n');
+  console.log('\n--- STARTING BLACKBOX PHASE 3 TEST SUITE ---\n');
   let passed = 0;
   let failed = 0;
 
@@ -53,7 +55,7 @@ async function runTests() {
     assert(healthRes.status === 200, 'GET /api/v1/health returns 200 OK');
     assert(healthRes.body.success === true, 'GET /api/v1/health has standard success format');
 
-    // 4. Test Registration (Commander)
+    // 4. Public registration is never allowed to provision a Commander.
     const commanderEmail = `test.commander.${Date.now()}@blackbox.local`;
     const regCommanderRes = await request.post('/api/v1/auth/register').send({
       name: 'Commander Sarah Vance',
@@ -62,10 +64,10 @@ async function runTests() {
       role: 'COMMANDER',
     });
 
-    assert(regCommanderRes.status === 201, 'POST /api/v1/auth/register (Commander) returns 201 Created');
+    assert(regCommanderRes.status === 201, 'POST /api/v1/auth/register with requested COMMANDER role returns 201 Created');
     assert(regCommanderRes.body.success === true, 'Register response format is standard');
     assert(Boolean(regCommanderRes.body.data.token), 'Register returns JWT token');
-    assert(regCommanderRes.body.data.user.role === 'COMMANDER', 'Register assigns COMMANDER role');
+    assert(regCommanderRes.body.data.user.role === 'FIELD_OPERATOR', 'Public registration ignores requested COMMANDER role');
     assert(regCommanderRes.body.data.user.isActive === true, 'User is initialized with isActive=true');
     assert(!regCommanderRes.body.data.user.passwordHash, 'Password hash is NOT exposed in response');
 
@@ -76,6 +78,10 @@ async function runTests() {
       cookiesArray.some((c: string) => c.includes('blackbox_token') && c.includes('HttpOnly')),
       'Register sets secure HTTP-only blackbox_token cookie'
     );
+
+    // Test-only provisioning fixture: production Commander provisioning is
+    // intentionally outside public registration.
+    await User.findByIdAndUpdate(regCommanderRes.body.data.user.id, { role: 'COMMANDER' });
 
     // 5. Test Registration (Field Operator)
     const operatorEmail = `test.operator.${Date.now()}@blackbox.local`;
@@ -88,6 +94,14 @@ async function runTests() {
 
     assert(regOperatorRes.status === 201, 'POST /api/v1/auth/register (Field Operator) returns 201 Created');
     assert(regOperatorRes.body.data.user.role === 'FIELD_OPERATOR', 'Register assigns FIELD_OPERATOR role');
+
+    const defaultRoleRes = await request.post('/api/v1/auth/register').send({
+      name: 'Default Role Operator',
+      email: `test.default.${Date.now()}@blackbox.local`,
+      password: 'TacticalPassword123!',
+    });
+    assert(defaultRoleRes.status === 201, 'Registration without role returns 201 Created');
+    assert(defaultRoleRes.body.data.user.role === 'FIELD_OPERATOR', 'Registration without role defaults to FIELD_OPERATOR');
 
     // 6. Security Scenario 3: Reject Arbitrary Role Assignment (e.g. ADMIN)
     const badRoleRes = await request.post('/api/v1/auth/register').send({
@@ -269,7 +283,12 @@ async function runTests() {
       password: 'TacticalPassword123!',
       role: 'COMMANDER',
     });
-    const commanderBToken = regCommanderBRes.body.data.token;
+    await User.findByIdAndUpdate(regCommanderBRes.body.data.user.id, { role: 'COMMANDER' });
+    const commanderBLoginRes = await request.post('/api/v1/auth/login').send({
+      email: commanderBEmail,
+      password: 'TacticalPassword123!',
+    });
+    const commanderBToken = commanderBLoginRes.body.data.token;
     assert(regCommanderBRes.status === 201, 'Commander B registered for ownership testing');
 
     // 20. Mission Creation - Unauthenticated attempt (Section 55 #5)
@@ -842,7 +861,7 @@ async function runTests() {
       .post(`/api/v1/sync/conflicts/${keepServerConflictId}/resolve`)
       .set('Authorization', `Bearer ${commanderToken}`)
       .send({ resolution: 'KEEP_SERVER' });
-    assert(duplicateKeepServer.status === 409, 'Resolving the same conflict twice is rejected');
+    assert(duplicateKeepServer.status === 200 && duplicateKeepServer.body.data.conflict.status === 'RESOLVED', 'Retrying the same conflict resolution replays the saved result without reapplying');
 
     // KEEP_LOCAL re-applies the intended change through the normal task service.
     const keepLocalBase = await request
@@ -1346,7 +1365,7 @@ async function runTests() {
       actorId: commanderAId,
       eventType: MissionEventType.TASK_CREATED,
       targetType: EventTargetType.TASK,
-      payload: { title: 'Duplicate Attempt' },
+      payload: { title: 'Idempotency Test Task' },
       source: EventSource.USER,
       idempotencyKey: key,
     });
@@ -1357,6 +1376,14 @@ async function runTests() {
       idempotencyKey: key,
     });
     assert(idempotencyCount === 1, 'Only one event document is saved for a given idempotency key');
+    let eventCollisionCode: string | undefined;
+    try {
+      await missionEventService.createMissionEvent({
+        missionId: drillMissionId, actorId: commanderAId, eventType: MissionEventType.TASK_CREATED,
+        targetType: EventTargetType.TASK, payload: { title: 'Duplicate Attempt' }, source: EventSource.USER, idempotencyKey: key,
+      });
+    } catch (error) { eventCollisionCode = (error as { code?: string }).code; }
+    assert(eventCollisionCode === 'IDEMPOTENCY_KEY_REUSED', 'Different event content with the same key is rejected, not silently replayed');
 
     // 9. Real-time Socket.IO Broadcast: mission:event_created & Room Isolation (Sections 37, 95, 98)
     const roomSocketA: ClientSocketType = ClientSocket(`http://localhost:${testPort}`, {
@@ -1488,6 +1515,19 @@ async function runTests() {
     // --- PHASE 9: DEMO MODE & RELIABILITY TESTS ---
     console.log('\n--- STARTING BLACKBOX PHASE 9 DEMO MODE TESTS ---\n');
 
+    // A real mission with the demo title must not become a demo record merely
+    // because its title matches the seeded mission.
+    const lookalikeDemoMissionRes = await request
+      .post('/api/v1/missions')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({
+        title: 'Campus Emergency Operations',
+        description: 'Real mission with a title matching the demo scenario',
+        location: 'Real Operations Center',
+        severity: 'LOW',
+      });
+    const lookalikeDemoMissionId = lookalikeDemoMissionRes.body.data.mission.id;
+
     // 1. GET /demo/info returns demo status and pre-configured user credentials
     const demoInfoRes = await request.get('/api/v1/demo/info');
     assert(demoInfoRes.status === 200, 'GET /demo/info returns 200 OK');
@@ -1496,16 +1536,47 @@ async function runTests() {
     assert(demoInfoRes.body.data.demoUsers.length === 4, 'GET /demo/info lists 4 demo users');
 
     // 2. POST /demo/reset resets database and creates standard demo mission
-    const demoResetRes = await request.post('/api/v1/demo/reset');
+    const unauthenticatedDemoReset = await request.post('/api/v1/demo/reset');
+    assert(unauthenticatedDemoReset.status === 401, 'Unauthenticated demo reset is rejected');
+
+    const demoResetRes = await request
+      .post('/api/v1/demo/reset')
+      .set('Authorization', `Bearer ${commanderToken}`);
     assert(demoResetRes.status === 200, 'POST /demo/reset returns 200 OK');
     assert(demoResetRes.body.success === true, 'POST /demo/reset returns success: true');
     assert(demoResetRes.body.data.demoMission.title === 'Campus Emergency Operations', 'Demo mission is "Campus Emergency Operations"');
     assert(demoResetRes.body.data.tasksCount === 5, 'Demo mission initializes with exactly 5 realistic tasks');
     assert(demoResetRes.body.data.eventsCount >= 14, 'Demo mission initializes with historical MissionEvents for replay');
-    assert(!!demoResetRes.body.data.primaryToken, 'Demo reset returns commander authentication token');
-
-    const demoCommanderToken = demoResetRes.body.data.primaryToken;
+    assert(
+      demoResetRes.body.data.demoUsers.every((user: Record<string, unknown>) => !('password' in user) && !('token' in user)),
+      'Demo reset does not expose demo passwords or user tokens'
+    );
+    assert(!demoResetRes.body.data.primaryToken, 'Demo reset does not expose an authentication token');
+    const demoCommanderCredentials = demoResetRes.body.data.demoUsers.find(
+      (user: { role: string; email: string }) => user.role === 'COMMANDER'
+    );
+    const demoLoginRes = await request
+      .post('/api/v1/auth/login')
+      .send({ email: demoCommanderCredentials.email, password: process.env.DEMO_PASSWORD });
+    assert(demoLoginRes.status === 200, 'Demo commander can sign in through the normal login flow');
+    const demoCommanderToken = demoLoginRes.body.data.token;
     const demoMissionId = demoResetRes.body.data.demoMission.id;
+
+    const nonDemoTriggerRes = await request
+      .post('/api/v1/demo/trigger-conflict')
+      .set('Authorization', `Bearer ${commanderToken}`)
+      .send({ missionId: lookalikeDemoMissionId });
+    assert(nonDemoTriggerRes.status === 404, 'Demo conflict trigger rejects a non-demo mission');
+
+    const demoTasksRes = await request
+      .get(`/api/v1/missions/${demoMissionId}/tasks`)
+      .set('Authorization', `Bearer ${demoCommanderToken}`);
+    const demoMainGateTask = demoTasksRes.body.data.tasks.find(
+      (task: { title: string }) => task.title === 'Inspect Main Gate'
+    );
+    const demoConflictBaseUpdatedAt = new Date(
+      new Date(demoMainGateTask.updatedAt).getTime() - 2000
+    ).toISOString();
 
     // 3. Authorized commander can read demo mission replay
     const demoReplayRes = await request
@@ -1517,6 +1588,7 @@ async function runTests() {
     // 4. POST /demo/trigger-conflict updates server task behind the scenes
     const conflictRes = await request
       .post('/api/v1/demo/trigger-conflict')
+      .set('Authorization', `Bearer ${commanderToken}`)
       .send({ missionId: demoMissionId });
     assert(conflictRes.status === 200, 'POST /demo/trigger-conflict returns 200 OK');
     assert(conflictRes.body.success === true, 'Conflict trigger returns success: true');
@@ -1529,10 +1601,88 @@ async function runTests() {
     const lastEvent = demoReplayAfterConflict.body.data.events[demoReplayAfterConflict.body.data.events.length - 1];
     assert(lastEvent.eventType === 'TASK_BLOCKED', 'Simulated conflict created genuine TASK_BLOCKED event in mission history');
 
-    // 6. Idempotent secondary reset cleans up and leaves a pristine demo state
-    const demoSecondReset = await request.post('/api/v1/demo/reset');
+    // 6. The documented COMPLETED-vs-BLOCKED conflict resolves through the
+    // valid BLOCKED -> ACTIVE -> COMPLETED state-machine path.
+    const demoCommander = demoResetRes.body.data.demoUsers.find(
+      (user: { role: string }) => user.role === 'COMMANDER'
+    );
+    const demoStatusMutation = {
+      mutationId: randomUUID(),
+      missionId: demoMissionId,
+      operationType: 'UPDATE_TASK_STATUS',
+      entityType: 'TASK',
+      entityId: demoMainGateTask.id,
+      payload: { status: 'COMPLETED' },
+      actorId: demoCommander.userId,
+      deviceId: 'demo-conflict-test-device',
+      clientCreatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `demo-conflict-${randomUUID()}`,
+      baseUpdatedAt: demoConflictBaseUpdatedAt,
+    };
+    const demoStatusSyncRes = await request
+      .post('/api/v1/sync')
+      .set('Authorization', `Bearer ${demoCommanderToken}`)
+      .send({ mutations: [demoStatusMutation] });
+    assert(
+      demoStatusSyncRes.body.data.results[0].status === 'CONFLICT',
+      'Demo COMPLETED mutation conflicts with the server BLOCKED state'
+    );
+
+    const demoConflictId = demoStatusSyncRes.body.data.results[0].conflict.conflictId;
+    const demoKeepLocalRes = await request
+      .post(`/api/v1/sync/conflicts/${demoConflictId}/resolve`)
+      .set('Authorization', `Bearer ${demoCommanderToken}`)
+      .send({ resolution: 'KEEP_LOCAL' });
+    assert(demoKeepLocalRes.status === 200, 'Demo KEEP_LOCAL resolves the BLOCKED task');
+    assert(
+      demoKeepLocalRes.body.data.entity.status === 'COMPLETED',
+      'Demo KEEP_LOCAL applies local COMPLETED status'
+    );
+
+    const demoConflictEventTypes = (
+      await MissionEvent.find({ missionId: demoMissionId }).sort({ createdAt: 1, _id: 1 }).select('eventType')
+    ).map((event) => event.eventType);
+    assert(
+      demoConflictEventTypes.includes(MissionEventType.SYNC_CONFLICT),
+      'Conflict detection writes a SYNC_CONFLICT event'
+    );
+    assert(
+      demoConflictEventTypes.includes(MissionEventType.CONFLICT_RESOLVED),
+      'Conflict resolution writes a CONFLICT_RESOLVED event'
+    );
+    assert(
+      demoConflictEventTypes.filter((eventType) => eventType === 'TASK_COMPLETED').length >= 1,
+      'KEEP_LOCAL writes the final TASK_COMPLETED event'
+    );
+    assert(
+      demoConflictEventTypes.filter((eventType) => eventType === 'TASK_STARTED').length >= 2,
+      'KEEP_LOCAL writes the intermediate TASK_STARTED event'
+    );
+
+    const demoReplayAfterResolution = await request
+      .get(`/api/v1/missions/${demoMissionId}/replay`)
+      .set('Authorization', `Bearer ${demoCommanderToken}`);
+    const finalDemoReplayEvent =
+      demoReplayAfterResolution.body.data.events[demoReplayAfterResolution.body.data.events.length - 1];
+    assert(
+      finalDemoReplayEvent.eventType === 'CONFLICT_RESOLVED',
+      'Replay exposes the immutable conflict resolution event'
+    );
+
+    // 7. Idempotent secondary reset cleans up and leaves a pristine demo state
+    const demoSecondReset = await request
+      .post('/api/v1/demo/reset')
+      .set('Authorization', `Bearer ${commanderToken}`);
     assert(demoSecondReset.status === 200, 'Subsequent POST /demo/reset succeeds idempotently');
     assert(demoSecondReset.body.data.tasksCount === 5, 'Subsequent reset maintains exactly 5 tasks without duplicates');
+    const lookalikeAfterReset = await request
+      .get(`/api/v1/missions/${lookalikeDemoMissionId}`)
+      .set('Authorization', `Bearer ${commanderToken}`);
+    assert(lookalikeAfterReset.status === 200, 'Demo reset preserves a real mission with the demo title');
+
+    await runPhase2Tests(request, commanderToken, operatorToken, commanderAId, operatorAId, assert);
+    await runPhase3Tests(request, commanderToken, operatorToken, commanderAId, operatorAId, assert);
 
     // Clean up
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

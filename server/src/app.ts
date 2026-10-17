@@ -20,9 +20,13 @@ export const createApp = (): Application => {
   );
 
   // CORS configuration (enables credentials for HTTP-only cookies)
+  const allowedOrigins = config.isProduction
+    ? [config.clientUrl]
+    : [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'];
+
   app.use(
     cors({
-      origin: [config.clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: allowedOrigins,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

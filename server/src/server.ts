@@ -14,6 +14,22 @@ const startServer = async () => {
     // 1. Establish Database connection before accepting requests
     await connectDatabase();
 
+    // Auto-initialize demo environment in development if enabled and empty
+    if (config.enableDemoMode && process.env.DEMO_PASSWORD) {
+      try {
+        const { User } = await import('./models/User');
+        const { demoService } = await import('./services/demo.service');
+        const existingCommander = await User.findOne({ email: 'commander@demo.blackbox.internal' });
+        if (!existingCommander) {
+          console.log('[Server] Initializing demo environment for development...');
+          await demoService.resetDemo();
+          console.log('[Server] Demo environment initialized successfully');
+        }
+      } catch (seedErr: unknown) {
+        console.error('[Server] Demo environment initialization warning:', (seedErr as Error).message);
+      }
+    }
+
     // 2. Instantiate Express app
     const app = createApp();
 

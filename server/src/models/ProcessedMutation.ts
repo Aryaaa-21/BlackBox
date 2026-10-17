@@ -16,10 +16,13 @@ export interface IProcessedMutationDocument extends Document {
   missionId: string;
   operationType: string;
   entityType: string;
+  /** Original request ID (possibly local); serverId holds the resolved ID. */
   entityId: string;
   localId?: string;
   serverId?: string;
   result: Record<string, unknown>;
+  outcome?: 'SYNCED' | 'CONFLICT';
+  /** Absent only on legacy receipts; their payload cannot be verified retroactively. */
   fingerprint?: string;
   createdAt: Date;
 }
@@ -71,6 +74,7 @@ const ProcessedMutationSchema = new Schema<IProcessedMutationDocument>(
       default: {},
     },
     fingerprint: { type: String, index: true },
+    outcome: { type: String, enum: ['SYNCED', 'CONFLICT'], default: 'SYNCED' },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
@@ -89,6 +93,7 @@ const ProcessedMutationSchema = new Schema<IProcessedMutationDocument>(
 // Compound indexes for efficient lookup
 ProcessedMutationSchema.index({ missionId: 1, createdAt: -1 });
 ProcessedMutationSchema.index({ userId: 1, missionId: 1 });
+ProcessedMutationSchema.index({ userId: 1, deviceId: 1, missionId: 1, entityType: 1, operationType: 1, localId: 1 });
 
 export const ProcessedMutation = mongoose.model<IProcessedMutationDocument>(
   'ProcessedMutation',
